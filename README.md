@@ -82,7 +82,7 @@ Guesses come from scoring inside the page. No AI is used and nothing is sent any
 
 ### Periods and charts
 - **Day / Week / Month / All**, with arrows to step through periods. Weeks start on Sunday (`WEEK_START` in the code).
-- **Share of income:** for the selected period, Needs, Wants, Savings and Uncategorized are each shown as a percent of that period's Income (bucket total ÷ Income). A fifth bar, **Money left**, is Income minus all four (negative if you spent and saved more than you earned). If a bucket exceeds 100%, the bars rescale and a marker shows where 100% is. Periods with no income (often Day or Week) show amounts only.
+- **Share of income:** for the selected period, Needs, Wants, Savings and Uncategorized are each shown as a percent of an income base. By default the base is **last month's income, prorated** to the days being viewed: days so far in the current month or week (e.g. 7 of 30), 7 of the month's days for a week, 1 for a day. A full past month uses last month's income as-is. The **Actual this period** toggle (saved in the vault) uses income received in the period instead. **All** always uses actual income. A line under the bars shows the math, and it falls back to actual income if last month had none. A fifth bar, **Money left**, is Income minus all four (negative if you spent and saved more than you earned). If a bucket exceeds 100%, the bars rescale and a marker shows where 100% is. Clicking Needs / Wants / Savings / Uncategorized filters the transaction list to that type.
 - Clicking a category in Spending by category filters the transaction list to it.
 
 ### Vault contents (after decryption)
