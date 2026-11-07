@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Budget</title>
+<!-- Self-contained on purpose: no external scripts, fonts or network requests. -->
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f6f4; --surface: #fcfcfb; --text: #0b0b0b; --text2: #52514e; --muted: #85847e;
+  --line: #e4e3de; --hover: #efeeea; --series: #2a78d6; --series-strong: #256abf; --danger: #c0392b;
+  --need: #2a78d6; --want: #eb6834; --save: #1baf7a; --uncat: #a3a29c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --text: #f0efec; --text2: #c3c2b7; --muted: #8f8e86;
+    --line: #2c2c2a; --hover: #242422; --series: #3987e5; --series-strong: #6da7ec; --danger: #e66767;
+    --need: #3987e5; --want: #d95926; --save: #199e70; --uncat: #6b6a65;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 12px; font-weight: 600; color: var(--text2); margin: 0 0 10px; text-transform: uppercase; letter-spacing: .05em; }
+button, select, input { font: inherit; color: var(--text); }
+button { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover { background: var(--hover); }
+button.primary { background: var(--series); border-color: var(--series); color: #fff; }
+button.primary:hover { background: var(--series-strong); }
+input, select { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; max-width: 100%; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spread { justify-content: space-between; }
+.muted { color: var(--muted); }
+.hidden { display: none !important; }
+.err { color: var(--danger); min-height: 1.4em; margin: 8px 0 0; }
+
+/* lock screen */
+#lock { max-width: 460px; margin: 8vh auto; padding: 0 16px; }
+#lock .card + .card { margin-top: 16px; }
+#lock input { width: 100%; margin: 6px 0; }
+
+/* app layout */
+header.top { margin-bottom: 16px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--series); color: #fff; }
+.tiles { display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+.tile { flex: 1 1 140px; }
+.tile .l { color: var(--text2); font-size: 12px; }
+.tile .v { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+/* category breakdown */
+.cat { display: grid; grid-template-columns: minmax(80px, 140px) 1fr 80px; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 6px; cursor: pointer; border: 0; background: none; width: 100%; text-align: left; }
+.cat:hover, .cat.on { background: var(--hover); }
+.cat .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat .bar { height: 10px; background: var(--series); border-radius: 0 4px 4px 0; min-width: 2px; }
+.cat .amt { text-align: right; font-variant-numeric: tabular-nums; }
+.cat .pct { color: var(--muted); font-size: 12px; }
+
+/* share of income */
+.bk { display: grid; grid-template-columns: minmax(80px, 110px) 1fr 110px; gap: 10px; align-items: center; padding: 8px 0; }
+.bk .track { position: relative; height: 14px; background: var(--hover); border-radius: 4px; }
+.bk .fill { height: 100%; border-radius: 4px; }
+.bk .mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text2); }
+.bk .val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.bk .val small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+.bk-note { color: var(--text2); margin: 10px 0 0; }
+
+/* table */
+.scroll { max-height: 520px; overflow: auto; }
+/* The transaction list grows with the page (whole page scrolls); its header sticks to the top of the window. */
+@media (max-width: 640px) { .tx-wrap { overflow-x: auto; } }
+table { width: 100%; border-collapse: collapse; }
+th { position: sticky; top: 0; background: var(--surface); text-align: left; font-weight: 600; color: var(--text2); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.desc { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.banner { background: var(--hover); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
+
+/* auto-categorize */
+.ac-key { font-size: 20px; margin: 6px 0 2px; word-break: break-word; }
+.ac-samples td { font-size: 13px; color: var(--text2); }
+.ac-guess { background: var(--hover); border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
+.ac-guess ul { margin: 6px 0 0; padding-left: 18px; color: var(--text2); }
+.conf { font-size: 12px; color: var(--muted); margin-left: 6px; }
+kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 6px; }
+button.primary kbd { border-color: rgba(255,255,255,.55); }
+
+dialog { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 16px; max-width: 780px; width: calc(100vw - 32px); }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; display: none; z-index: 20; max-width: calc(100vw - 32px); }
+</style>
+</head>
+<body>
+
+<!-- ============ Login screen ============ -->
+<div id="lock">
+  <div class="card">
+    <h1>Budget</h1>
+    <p class="muted" id="lockMsg">Connecting…</p>
+    <form id="loginForm" class="hidden">
+      <input type="password" id="pass" placeholder="Password" autocomplete="current-password">
+      <button class="primary">Unlock</button>
+    </form>
+    <form id="setupForm" class="hidden">
+      <input type="password" id="passNew1" placeholder="Choose a password (8+ characters)" autocomplete="new-password">
+      <input type="password" id="passNew2" placeholder="Repeat password" autocomplete="new-password">
+      <button class="primary">Create</button>
+    </form>
+    <p class="err" id="lockErr"></p>
+  </div>
+</div>
+
+<!-- ============ App ============ -->
+<div id="app" class="wrap hidden">
+  <header class="top row spread">
+    <h1>Budget</h1>
+    <div class="row">
+      <span id="saveState" class="muted"></span>
+      <button id="btnImport" class="primary">Import CSV</button>
+      <button id="btnAuto" class="hidden">Auto-categorize</button>
+      <button id="btnImports">Imports</button>
+      <button id="btnSettings">Categories &amp; rules</button>
+      <button id="btnLock">Lock</button>
+    </div>
+  </header>
+  <input type="file" id="csvPick" accept=".csv,text/csv,.txt" class="hidden">
+
+  <div class="card row spread">
+    <div class="row">
+      <div class="seg" id="modeSeg">
+        <button data-m="day">Day</button><button data-m="week">Week</button><button data-m="month">Month</button><button data-m="all">All</button>
+      </div>
+      <button id="prev" aria-label="Previous period">‹</button>
+      <input type="date" id="anchor" aria-label="Date">
+      <button id="next" aria-label="Next period">›</button>
+    </div>
+    <strong id="rangeLabel"></strong>
+  </div>
+
+  <div class="tiles">
+    <div class="card tile"><div class="l">Spent</div><div class="v" id="tSpent"></div></div>
+    <div class="card tile"><div class="l">Income</div><div class="v" id="tIncome"></div></div>
+    <div class="card tile"><div class="l">Uncategorized</div><div class="v" id="tUncat"></div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><h2>Spending by category</h2><div id="breakdown"></div></div>
+    <div class="card"><h2>Share of income</h2><div id="buckets"></div></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="row spread">
+      <h2 id="txTitle" style="margin:0">Transactions</h2>
+      <button id="clearCat" class="hidden">Show all categories</button>
+    </div>
+    <div id="ruleBanner" class="banner hidden"></div>
+    <div class="tx-wrap" style="margin-top:8px">
+      <table><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Category</th></tr></thead><tbody id="txBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Import dialog ============ -->
+<dialog id="importDlg">
+  <h2>Import CSV — <span id="importFile" style="text-transform:none"></span></h2>
+  <p class="muted" style="margin-top:0">Match your bank's columns. This is remembered for files with the same headers.</p>
+  <div class="row">
+    <label>Date <select id="mDate"></select></label>
+    <label>Description <select id="mDesc"></select></label>
+    <label>Date format <select id="mFmt"><option value="mdy">MM/DD/YYYY</option><option value="dmy">DD/MM/YYYY</option></select></label>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <label>Amounts <select id="mKind"><option value="single">One amount column</option><option value="split">Separate debit / credit columns</option></select></label>
+    <label id="lAmt">Amount <select id="mAmt"></select></label>
+    <label id="lSign">Spending is <select id="mSign"><option value="neg">negative</option><option value="pos">positive</option></select></label>
+    <label id="lDeb">Debit <select id="mDeb"></select></label>
+    <label id="lCred">Credit <select id="mCred"></select></label>
+  </div>
+  <div class="scroll" style="margin-top:12px;max-height:220px"><table id="previewTbl"></table></div>
+  <div class="row spread" style="margin-top:12px">
+    <span class="muted" id="previewNote"></span>
+    <span class="row"><button id="importCancel">Cancel</button><button class="primary" id="importGo">Import</button></span>
+  </div>
+</dialog>
+
+<!-- ============ Imports dialog ============ -->
+<dialog id="impDlg">
+  <div class="row spread"><h2 style="margin:0">Imports</h2><button id="impClose">Done</button></div>
+  <p class="muted">Deleting an import removes every transaction it added, including categories you set on them. Categories and rules are kept.</p>
+  <table><thead><tr><th>File</th><th>Imported</th><th class="num">Transactions</th><th></th></tr></thead><tbody id="impBody"></tbody></table>
+</dialog>
+
+<!-- ============ Settings dialog ============ -->
+<dialog id="setDlg">
+  <div class="row spread"><h2 style="margin:0">Categories &amp; rules</h2><button id="setClose">Done</button></div>
+  <div class="grid" style="margin-top:12px">
+    <div>
+      <h2>Categories</h2>
+      <div id="catList"></div>
+      <div class="row" style="margin-top:8px"><input id="newCat" placeholder="New category"><button id="addCat">Add</button></div>
+      <p class="muted"><strong>Need</strong> and <strong>Want</strong> count toward Spent. <strong>Savings</strong> is money you set aside. <strong>Income</strong> is what the percentages are measured against. <strong>Ignore</strong> (transfers, card payments) counts toward nothing.</p>
+    </div>
+    <div>
+      <h2>Rules</h2>
+      <p class="muted" style="margin-top:0">If a description contains the text (any case), it gets that category. Rules are checked top to bottom; first match wins. Categories you set by hand are never overwritten.</p>
+      <div class="scroll" style="max-height:300px"><div id="ruleList"></div></div>
+      <div class="row" style="margin-top:8px"><input id="newRuleText" placeholder="Description contains…"><select id="newRuleCat"></select><button id="addRule">Add</button></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ Auto-categorize dialog ============ -->
+<dialog id="acDlg">
+  <div class="row spread"><h2 style="margin:0">Auto-categorize</h2><button id="acClose">Close</button></div>
+  <div id="acBody" tabindex="-1" style="outline:none;margin-top:8px"></div>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+'use strict';
+
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+const money0 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEK_START = 0; // 0 = Sunday, 1 = Monday
+const UNCAT = 'Uncategorized';
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => (t.style.display = 'none'), 3500);
+}
+
+/* ================= dates: 'YYYY-MM-DD' strings in local time ================= */
+const pad = n => String(n).padStart(2, '0');
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const toDate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = toDate(s); d.setDate(d.getDate() + n); return iso(d); };
+const addMonths = (s, n) => { const d = toDate(s); d.setDate(1); d.setMonth(d.getMonth() + n); return iso(d); };
+const weekStart = s => { const d = toDate(s); d.setDate(d.getDate() - (d.getDay() - WEEK_START + 7) % 7); return iso(d); };
+const monthStart = s => s.slice(0, 8) + '01';
+const monthEnd = s => { const d = toDate(s); return iso(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
+const longDate = s => { const d = toDate(s); return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`; };
+const shortDate = s => { const d = toDate(s); return `${MONTHS[d.getMonth()]} ${d.getDate()}`; };
+const monthName = s => `${MONTHS[+s.slice(5, 7) - 1]} ${s.slice(0, 4)}`;
+
+/* ================= encryption: PBKDF2-SHA256 → AES-256-GCM (Web Crypto) ================= */
+const ITERATIONS = 600000;
+const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function deriveKey(passphrase, salt, iterations) {
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, material,
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptVault(vault, key, salt, iterations) {
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // fresh IV on every save
+  const plain = new TextEncoder().encode(JSON.stringify(vault));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain));
+  return JSON.stringify({ format: 'budget-vault', version: 1, kdf: 'PBKDF2-SHA256', iterations, salt: b64(salt), iv: b64(iv), data: b64(cipher) });
+}
+async function decryptVault(fileText, passphrase) {
+  let f;
+  try { f = JSON.parse(fileText); } catch { throw new Error('not-vault'); }
+  if (f.format !== 'budget-vault') throw new Error('not-vault');
+  const salt = unb64(f.salt), key = await deriveKey(passphrase, salt, f.iterations);
+  let plain;
+  try { plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(f.iv) }, key, unb64(f.data)); }
+  catch { throw new Error('bad-pass'); } // GCM auth tag fails on wrong passphrase or tampering
+  return { vault: JSON.parse(new TextDecoder().decode(plain)), key, salt, iterations: f.iterations };
+}
+
+/* ================= vault model ================= */
+// Category types. need/want/(uncategorized) count as Spent; savings, income and ignore don't.
+const KINDS = { need: 'Need', want: 'Want', savings: 'Savings', income: 'Income', ignore: 'Ignore' };
+const SPEND_KINDS = new Set(['need', 'want', 'uncat']);
+const DEFAULT_KINDS = {
+  Housing: 'need', Groceries: 'need', 'Bills & Utilities': 'need', Transport: 'need', Health: 'need',
+  Restaurants: 'want', Coffee: 'want', Shopping: 'want', Entertainment: 'want',
+  Savings: 'savings', Income: 'income', Transfers: 'ignore',
+};
+function newVault() {
+  const cats = Object.entries(DEFAULT_KINDS);
+  const rules = [
+    ['starbucks', 'Coffee'], ['dunkin', 'Coffee'], ['peet', 'Coffee'], ['blue bottle', 'Coffee'],
+    ['uber eats', 'Restaurants'], ['doordash', 'Restaurants'], ['grubhub', 'Restaurants'], ['mcdonald', 'Restaurants'], ['chipotle', 'Restaurants'],
+    ['whole foods', 'Groceries'], ['trader joe', 'Groceries'], ['kroger', 'Groceries'], ['safeway', 'Groceries'], ['costco', 'Groceries'], ['aldi', 'Groceries'],
+    ['uber', 'Transport'], ['lyft', 'Transport'], ['shell', 'Transport'], ['chevron', 'Transport'],
+    ['netflix', 'Entertainment'], ['spotify', 'Entertainment'], ['amazon', 'Shopping'],
+    ['payroll', 'Income'], ['direct dep', 'Income'], ['transfer to sav', 'Savings'],
+  ];
+  return {
+    categories: cats.map(([name, kind]) => ({ name, kind })),
+    rules: rules.map(([text, cat]) => ({ text, cat })),
+    txns: [],     // { id, date, desc, amount (negative = money out), cat (name | null), manual, imp (import id) }
+    imports: [],  // { id, file, at (ISO timestamp) }
+    mappings: {}, // CSV header signature → column mapping
+  };
+}
+
+/* ================= state ================= */
+const S = {
+  vault: null, key: null, salt: null, iterations: ITERATIONS,
+  version: null, rev: 0, dirty: false, saving: false, saveError: '', blocked: false, demo: false, saveTimer: null,
+  mode: 'month', anchor: iso(new Date()), cat: null, pending: null,
+};
+
+const kindOf = cat => (cat ? (S.vault.categories.find(c => c.name === cat) || { kind: 'want' }).kind : 'uncat');
+const catOf = t => t.cat || UNCAT;
+const spendOf = t => (SPEND_KINDS.has(kindOf(t.cat)) ? -t.amount : 0); // refunds reduce spending
+function ruleCat(desc) {
+  const d = desc.toLowerCase();
+  const r = S.vault.rules.find(r => d.includes(r.text.toLowerCase()));
+  return r ? r.cat : null;
+}
+function reapplyRules() { for (const t of S.vault.txns) if (!t.manual) t.cat = ruleCat(t.desc); }
+
+/* ================= saving: auto-save the encrypted vault to the server ================= */
+// The key derived at login stays in memory, so saves never need the password. Each save is
+// encrypted with a fresh IV; the server only ever receives ciphertext. The ETag/If-Match pair
+// stops two open tabs from silently overwriting each other.
+function changed() {
+  S.rev++; S.dirty = true; showSaveState();
+  clearTimeout(S.saveTimer); S.saveTimer = setTimeout(save, 800);
+}
+function showSaveState() {
+  $('saveState').textContent = S.demo ? 'Demo data — nothing is saved'
+    : S.blocked ? 'Not saved: vault changed in another tab. Reload to continue.'
+    : S.saveError ? `Not saved: ${S.saveError}. Retrying…`
+    : S.dirty ? 'Saving…' : 'Saved ✓';
+}
+async function save() {
+  if (S.demo || S.blocked || !S.dirty) return;
+  if (S.saving) { clearTimeout(S.saveTimer); S.saveTimer = setTimeout(save, 300); return; }
+  S.saving = true;
+  const rev = S.rev;
+  try {
+    const body = await encryptVault(S.vault, S.key, S.salt, S.iterations);
+    const headers = { 'Content-Type': 'application/json' };
+    if (S.version) headers['If-Match'] = S.version;
+    const r = await fetch('vault.json', { method: 'PUT', headers, body });
+    if (r.status === 409) S.blocked = true;
+    else if (!r.ok) throw new Error((await r.text()) || `server error ${r.status}`);
+    else {
+      S.version = r.headers.get('ETag'); S.saveError = '';
+      if (S.rev === rev) S.dirty = false;
+    }
+  } catch (e) {
+    S.saveError = e instanceof TypeError ? 'server not reachable' : e.message;
+    clearTimeout(S.saveTimer); S.saveTimer = setTimeout(save, 5000);
+  } finally {
+    S.saving = false; showSaveState();
+  }
+}
+window.addEventListener('beforeunload', e => { if (S.dirty && !S.demo) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ================= login screen ================= */
+const lockErr = msg => ($('lockErr').textContent = msg || '');
+function showLock(mode, msg) {
+  $('lockMsg').textContent = msg;
+  $('loginForm').classList.toggle('hidden', mode !== 'login');
+  $('setupForm').classList.toggle('hidden', mode !== 'setup');
+  (mode === 'login' ? $('pass') : mode === 'setup' ? $('passNew1') : document.body).focus();
+}
+async function fetchVault() { // → { text, etag } or null if no vault exists yet; throws if the server is unreachable
+  const r = await fetch('vault.json', { cache: 'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`server error ${r.status}`);
+  return { text: await r.text(), etag: r.headers.get('ETag') };
+}
+async function initLock() {
+  if (location.protocol === 'file:') return showLock('none', 'Open this page through the budget server: run “python3 server.py” in the budget folder, then go to http://localhost:8000');
+  try {
+    const v = await fetchVault();
+    if (v) showLock('login', 'Enter your password to unlock.');
+    else showLock('setup', 'First time here: choose a password. It encrypts all your data, and it can’t be recovered if you forget it.');
+  } catch {
+    showLock('none', 'Can’t reach the budget server. Is “python3 server.py” running?');
+  }
+}
+$('loginForm').onsubmit = async e => {
+  e.preventDefault(); lockErr();
+  if (!$('pass').value) return lockErr('Enter your password.');
+  const btn = e.submitter || $('loginForm').querySelector('button');
+  btn.textContent = 'Unlocking…'; btn.disabled = true;
+  try {
+    const v = await fetchVault(); // fetch fresh, so we start from the latest saved version
+    if (!v) return initLock();
+    const r = await decryptVault(v.text, $('pass').value);
+    Object.assign(S, { vault: r.vault, key: r.key, salt: r.salt, iterations: r.iterations, version: v.etag });
+    $('pass').value = '';
+    startApp();
+  } catch (err) {
+    lockErr(err.message === 'bad-pass' ? 'Wrong password.' : err.message === 'not-vault' ? 'vault.json is not a budget vault.' : 'Can’t reach the budget server.');
+  } finally { btn.textContent = 'Unlock'; btn.disabled = false; }
+};
+$('setupForm').onsubmit = async e => {
+  e.preventDefault(); lockErr();
+  const p1 = $('passNew1').value, p2 = $('passNew2').value;
+  if (p1.length < 8) return lockErr('Use at least 8 characters.');
+  if (p1 !== p2) return lockErr('The passwords do not match.');
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  Object.assign(S, { vault: newVault(), key: await deriveKey(p1, salt, ITERATIONS), salt, iterations: ITERATIONS, version: null });
+  $('passNew1').value = $('passNew2').value = '';
+  startApp(); changed(); save();
+};
+$('btnLock').onclick = () => {
+  if (S.dirty && !S.demo && !confirm('Some changes haven’t saved yet. Lock anyway and lose them?')) return;
+  S.dirty = false;
+  location.href = location.pathname; // reload: drops decrypted data and the key from memory
+};
+
+function startApp() {
+  $('lock').classList.add('hidden'); $('app').classList.remove('hidden');
+  S.vault.imports ||= []; // vaults created before import tracking
+  // Vaults from before need/want/savings: old 'spend' categories get a sensible default type.
+  for (const c of S.vault.categories) if (c.kind === 'spend') c.kind = DEFAULT_KINDS[c.name] === 'need' ? 'need' : 'want';
+  if (!S.vault.categories.some(c => c.kind === 'savings') && !findCat('Savings')) S.vault.categories.push({ name: 'Savings', kind: 'savings' });
+  S.anchor = latestDate() || iso(new Date());
+  S.cat = null; showSaveState(); render();
+}
+const latestDate = () => S.vault.txns.reduce((m, t) => (t.date > m ? t.date : m), '');
+
+/* ================= CSV parsing ================= */
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const firstLine = text.split(/\r?\n/, 1)[0];
+  const delim = [',', ';', '\t'].reduce((best, d) => (firstLine.split(d).length > firstLine.split(best).length ? d : best), ',');
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') cell += c;
+      else if (text[i + 1] === '"') { cell += '"'; i++; }
+      else quoted = false;
+    } else if (c === '"') quoted = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim() !== ''));
+}
+function parseDate(s, fmt) {
+  s = (s || '').trim();
+  let y, mo, d, m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) [y, mo, d] = [+m[1], +m[2], +m[3]];
+  else if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/))) {
+    y = +m[3]; if (y < 100) y += 2000;
+    [mo, d] = fmt === 'dmy' ? [+m[2], +m[1]] : [+m[1], +m[2]];
+  } else return null;
+  const dt = new Date(y, mo - 1, d);
+  return dt.getMonth() === mo - 1 && dt.getDate() === d ? iso(dt) : null;
+}
+function parseAmount(s) {
+  s = (s || '').trim();
+  if (!s) return null;
+  const negative = /^\(.*\)$/.test(s) || s.includes('-');
+  const n = parseFloat(s.replace(/[^0-9.]/g, ''));
+  return isNaN(n) ? null : negative ? -n : n;
+}
+function guessMapping(header) {
+  // Several patterns = priority order: the first pattern that matches any column wins.
+  const find = (...res) => {
+    for (const re of res) { const i = header.findIndex(h => re.test(h.toLowerCase())); if (i >= 0) return i; }
+    return 0;
+  };
+  const has = re => header.some(h => re.test(h.toLowerCase()));
+  const split = !has(/amount/) && has(/debit|withdraw/) && has(/credit|deposit/);
+  return {
+    date: find(/date|posted/), desc: find(/desc/, /payee|merchant/, /memo/, /name/, /detail/),
+    kind: split ? 'split' : 'single', amt: find(/amount/), sign: 'neg',
+    deb: find(/debit|withdraw/), cred: find(/credit|deposit/), fmt: 'mdy',
+  };
+}
+function rowToTxn(r, m) {
+  const date = parseDate(r[m.date], m.fmt);
+  if (!date) return null;
+  const desc = (r[m.desc] || '').replace(/\s+/g, ' ').trim();
+  let amount;
+  if (m.kind === 'split') {
+    const debit = parseAmount(r[m.deb]), credit = parseAmount(r[m.cred]);
+    if (debit == null && credit == null) return null;
+    amount = Math.abs(credit || 0) - Math.abs(debit || 0);
+  } else {
+    amount = parseAmount(r[m.amt]);
+    if (amount == null) return null;
+    if (m.sign === 'pos') amount = -amount;
+  }
+  return { date, desc, amount: Math.round(amount * 100) / 100 };
+}
+
+/* ================= import dialog ================= */
+const COLS = { date: 'mDate', desc: 'mDesc', amt: 'mAmt', deb: 'mDeb', cred: 'mCred' };
+function readMapping() {
+  const m = { kind: $('mKind').value, sign: $('mSign').value, fmt: $('mFmt').value };
+  for (const k in COLS) m[k] = +$(COLS[k]).value;
+  return m;
+}
+function showMapping(m) {
+  $('mKind').value = m.kind; $('mSign').value = m.sign; $('mFmt').value = m.fmt;
+  for (const k in COLS) $(COLS[k]).value = m[k];
+  const split = m.kind === 'split';
+  ['lAmt', 'lSign'].forEach(id => $(id).classList.toggle('hidden', split));
+  ['lDeb', 'lCred'].forEach(id => $(id).classList.toggle('hidden', !split));
+}
+function refreshPreview() {
+  const m = readMapping(); showMapping(m);
+  const { body } = S.pending;
+  const parsed = body.map(r => rowToTxn(r, m));
+  $('previewTbl').innerHTML = '<thead><tr><th>Date</th><th>Description</th><th class="num">Amount (− = money out)</th></tr></thead>' +
+    parsed.slice(0, 6).map((t, i) => t
+      ? `<tr><td>${t.date}</td><td>${esc(t.desc)}</td><td class="num">${money.format(t.amount)}</td></tr>`
+      : `<tr><td colspan="3" class="muted">Row ${i + 1}: couldn't read the date or amount</td></tr>`).join('');
+  const ok = parsed.filter(Boolean).length;
+  $('previewNote').textContent = `${ok} of ${body.length} rows readable`;
+  $('importGo').disabled = ok === 0;
+}
+$('btnImport').onclick = () => $('csvPick').click();
+$('csvPick').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  const rows = parseCSV(await f.text());
+  if (rows.length < 2) return toast('That file has no data rows.');
+  const header = rows[0], sig = header.map(h => h.trim().toLowerCase()).join('|');
+  S.pending = { header, body: rows.slice(1), sig };
+  const opts = header.map((h, i) => `<option value="${i}">${esc(h.trim() || `Column ${i + 1}`)}</option>`).join('');
+  Object.values(COLS).forEach(id => ($(id).innerHTML = opts));
+  showMapping(S.vault.mappings[sig] || guessMapping(header));
+  $('importFile').textContent = f.name;
+  refreshPreview(); $('importDlg').showModal();
+};
+document.querySelectorAll('#importDlg select').forEach(s => (s.onchange = refreshPreview));
+$('importCancel').onclick = () => $('importDlg').close();
+$('importGo').onclick = () => {
+  const { body, sig } = S.pending, m = readMapping();
+  const existing = new Set(S.vault.txns.map(t => t.id)), seen = {};
+  const imp = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), file: $('importFile').textContent, at: new Date().toISOString() };
+  let added = 0, dupes = 0, bad = 0;
+  for (const r of body) {
+    const t = rowToTxn(r, m);
+    if (!t) { bad++; continue; }
+    // Same date+desc+amount can legitimately repeat (two coffees); number them so re-imports still dedupe.
+    const base = `${t.date}|${t.desc}|${t.amount.toFixed(2)}`;
+    seen[base] = (seen[base] || 0) + 1;
+    t.id = `${base}|${seen[base]}`;
+    if (existing.has(t.id)) { dupes++; continue; }
+    t.cat = ruleCat(t.desc); t.manual = false; t.imp = imp.id;
+    S.vault.txns.push(t); added++;
+  }
+  if (added) S.vault.imports.push(imp);
+  S.vault.mappings[sig] = m;
+  S.pending = null; $('importDlg').close();
+  if (added) { S.anchor = latestDate(); changed(); }
+  render();
+  toast(`Imported ${added} new · ${dupes} already there${bad ? ` · ${bad} unreadable` : ''}`);
+};
+
+/* ================= imports dialog ================= */
+function renderImports() {
+  const counts = {};
+  for (const t of S.vault.txns) counts[t.imp || ''] = (counts[t.imp || ''] || 0) + 1;
+  const rows = S.vault.imports.filter(i => counts[i.id]).slice().reverse()
+    .map(i => ({ id: i.id, file: i.file, when: new Date(i.at).toLocaleString(), n: counts[i.id] }));
+  if (counts['']) rows.push({ id: '', file: 'Earlier imports (untagged)', when: '—', n: counts[''] });
+  $('impBody').innerHTML = rows.map(r => `<tr><td>${esc(r.file)}</td><td>${esc(r.when)}</td><td class="num">${r.n}</td>
+      <td class="num"><button data-imp="${esc(r.id)}" data-file="${esc(r.file)}" data-n="${r.n}">Delete</button></td></tr>`).join('')
+    || '<tr><td colspan="4" class="muted">Nothing imported yet.</td></tr>';
+  $('impBody').querySelectorAll('[data-imp]').forEach(b => (b.onclick = () => deleteImport(b.dataset.imp, b.dataset.file, +b.dataset.n)));
+}
+function deleteImport(id, file, n) {
+  if (!confirm(`Delete “${file}”? This removes its ${n} transaction${n === 1 ? '' : 's'} from the vault.`)) return;
+  S.vault.txns = S.vault.txns.filter(t => (t.imp || '') !== id);
+  S.vault.imports = S.vault.imports.filter(i => i.id !== id);
+  if (S.vault.txns.length && !S.vault.txns.some(t => t.date === S.anchor)) S.anchor = latestDate();
+  changed(); renderImports(); render();
+  toast(`Deleted ${n} transaction${n === 1 ? '' : 's'}`);
+}
+$('btnImports').onclick = () => { renderImports(); $('impDlg').showModal(); };
+$('impClose').onclick = () => $('impDlg').close();
+
+/* ================= period ================= */
+function range() {
+  const a = S.anchor;
+  if (S.mode === 'day') return [a, a];
+  if (S.mode === 'week') { const s = weekStart(a); return [s, addDays(s, 6)]; }
+  if (S.mode === 'month') return [monthStart(a), monthEnd(a)];
+  const dates = S.vault.txns.map(t => t.date).sort();
+  return dates.length ? [dates[0], dates[dates.length - 1]] : [a, a];
+}
+function rangeLabel([s, e]) {
+  if (S.mode === 'day') return longDate(s);
+  if (S.mode === 'month') return monthName(s);
+  if (S.mode === 'all' && !S.vault.txns.length) return 'No data yet';
+  return `${longDate(s)} – ${longDate(e)}`;
+}
+function shift(dir) {
+  S.anchor = S.mode === 'day' ? addDays(S.anchor, dir) : S.mode === 'week' ? addDays(S.anchor, 7 * dir) : addMonths(S.anchor, dir);
+  render();
+}
+$('prev').onclick = () => shift(-1);
+$('next').onclick = () => shift(1);
+$('anchor').onchange = e => { if (e.target.value) { S.anchor = e.target.value; render(); } };
+$('modeSeg').onclick = e => { const m = e.target.dataset.m; if (m) { S.mode = m; render(); } };
+$('clearCat').onclick = () => { S.cat = null; render(); };
+
+/* ================= render ================= */
+function render() {
+  const rg = range(), all = S.mode === 'all';
+  $('anchor').value = S.anchor;
+  ['anchor', 'prev', 'next'].forEach(id => $(id).classList.toggle('hidden', all));
+  document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mode));
+  $('rangeLabel').textContent = rangeLabel(rg);
+
+  const txns = S.vault.txns.filter(t => t.date >= rg[0] && t.date <= rg[1]);
+  const income = txns.filter(t => kindOf(t.cat) === 'income').reduce((a, t) => a + t.amount, 0);
+  $('tSpent').textContent = money.format(txns.reduce((a, t) => a + spendOf(t), 0));
+  $('tIncome').textContent = money.format(income);
+  $('tUncat').textContent = txns.filter(t => !t.cat).length;
+  const uncatAll = S.vault.txns.filter(t => !t.cat).length;
+  $('btnAuto').textContent = `Auto-categorize (${uncatAll})`;
+  $('btnAuto').classList.toggle('hidden', !uncatAll);
+
+  renderBreakdown(txns);
+  renderBuckets(txns, income);
+  renderTable(txns);
+}
+
+function renderBreakdown(txns) {
+  const totals = {};
+  for (const t of txns) if (SPEND_KINDS.has(kindOf(t.cat))) totals[catOf(t)] = (totals[catOf(t)] || 0) + spendOf(t);
+  const list = Object.entries(totals).filter(([, v]) => v > 0.004).sort((a, b) => b[1] - a[1]);
+  const total = list.reduce((a, [, v]) => a + v, 0), max = list.length ? list[0][1] : 1;
+  $('breakdown').innerHTML = list.length
+    ? list.map(([name, v]) => `<button class="cat ${S.cat === name ? 'on' : ''}" data-cat="${esc(name)}" title="Show only ${esc(name)}">
+        <span class="name">${esc(name)} <span class="pct">${Math.round(v / total * 100)}%</span></span>
+        <span><div class="bar" style="width:${Math.max(1, v / max * 100)}%"></div></span>
+        <span class="amt">${money0.format(v)}</span></button>`).join('')
+    : '<p class="muted">No spending in this period.</p>';
+  $('breakdown').querySelectorAll('.cat').forEach(el => (el.onclick = () => {
+    S.cat = S.cat === el.dataset.cat ? null : el.dataset.cat; render();
+  }));
+}
+
+function renderBuckets(txns, income) {
+  // Each bucket as a share of the period's Income. Money moved back out of savings counts as negative savings.
+  const BUCKETS = [['need', 'Needs'], ['want', 'Wants'], ['savings', 'Savings'], ['uncat', 'Uncategorized']];
+  const sums = { need: 0, want: 0, savings: 0, uncat: 0 };
+  for (const t of txns) { const k = kindOf(t.cat); if (k in sums) sums[k] -= t.amount; }
+  const pct = v => (income > 0 ? (v / income) * 100 : 0);
+  const scale = Math.max(100, ...BUCKETS.map(([k]) => pct(sums[k]))); // bars stretch past 100% if a bucket exceeds income
+  const fmtPct = v => `${v >= 10 || v === 0 ? Math.round(v) : v.toFixed(1)}%`;
+  let html = BUCKETS.map(([k, label]) => {
+    const p = pct(sums[k]), w = Math.max(0, (p / scale) * 100);
+    return `<div class="bk"><span>${label}</span>
+      <span class="track" title="${label}: ${fmtPct(p)} of income">
+        ${w > 0 ? `<div class="fill" style="width:${w}%;min-width:3px;background:var(--${k === 'savings' ? 'save' : k})"></div>` : ''}
+        ${scale > 100 ? `<span class="mark" style="left:${(100 / scale) * 100}%" title="100% of income"></span>` : ''}
+      </span>
+      <span class="val">${income > 0 ? fmtPct(p) : '—'}<small>${money0.format(sums[k])}</small></span></div>`;
+  }).join('');
+  if (income > 0) {
+    const left = income - sums.need - sums.want - sums.savings - sums.uncat;
+    html += `<p class="bk-note">${left >= 0
+      ? `${fmtPct(pct(left))} of income (${money0.format(left)}) not yet spent or saved.`
+      : `Spent and saved ${money0.format(-left)} more than you earned this period.`}</p>`;
+  } else {
+    html += '<p class="bk-note">No income in this period, so percentages can’t be calculated. Try Month or All.</p>';
+  }
+  $('buckets').innerHTML = html;
+}
+
+function renderTable(txns) {
+  const rows = (S.cat ? txns.filter(t => catOf(t) === S.cat) : txns).slice().sort((a, b) => b.date.localeCompare(a.date));
+  $('clearCat').classList.toggle('hidden', !S.cat);
+  $('txTitle').textContent = S.cat ? `Transactions · ${S.cat}` : 'Transactions';
+  const LIMIT = 500, catOpts = S.vault.categories.map(c => c.name);
+  const select = t => `<select data-id="${esc(t.id)}" aria-label="Category"><option value="">${UNCAT}</option>` +
+    catOpts.map(n => `<option ${n === t.cat ? 'selected' : ''}>${esc(n)}</option>`).join('') + '<option value="__new">+ New category…</option></select>';
+  $('txBody').innerHTML = rows.slice(0, LIMIT).map(t => `<tr>
+      <td class="num" style="text-align:left">${t.date}</td>
+      <td class="desc" title="${esc(t.desc)}">${esc(t.desc)}</td>
+      <td class="num">${money.format(t.amount)}</td>
+      <td>${select(t)}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="muted">No transactions here. Import a CSV or pick another period.</td></tr>';
+  if (rows.length > LIMIT) $('txBody').insertAdjacentHTML('beforeend', `<tr><td colspan="4" class="muted">Showing the newest ${LIMIT} of ${rows.length}. Pick a shorter period to see the rest.</td></tr>`);
+  $('txBody').querySelectorAll('select').forEach(sel => (sel.onchange = () => setCategory(sel.dataset.id, sel.value)));
+}
+
+/* ================= categorizing ================= */
+function findCat(name) { return S.vault.categories.find(c => c.name.toLowerCase() === name.toLowerCase()); }
+function setCategory(id, value) {
+  const t = S.vault.txns.find(x => x.id === id);
+  if (!t) return;
+  if (value === '__new') {
+    const name = (prompt('New category name:') || '').trim();
+    if (!name || name === UNCAT) return render();
+    if (!findCat(name)) S.vault.categories.push({ name, kind: 'want' });
+    value = findCat(name).name;
+  }
+  t.cat = value || null; t.manual = true;
+  changed(); render();
+  if (value) offerRule(t, value);
+}
+function offerRule(t, cat) {
+  // Suggest a merchant keyword: letters only, first two words ("STARBUCKS #1234 SEATTLE" → "STARBUCKS SEATTLE" → user can edit).
+  const guess = t.desc.replace(/[^A-Za-z&' ]+/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ');
+  const b = $('ruleBanner');
+  if (!guess) return b.classList.add('hidden');
+  b.classList.remove('hidden');
+  b.innerHTML = `<div class="row">Also file everything containing <input id="ruleText" value="${esc(guess)}" size="18"> under <strong>${esc(cat)}</strong>?
+    <button class="primary" id="ruleYes">Add rule</button><button id="ruleNo">No thanks</button></div>`;
+  $('ruleNo').onclick = () => b.classList.add('hidden');
+  $('ruleYes').onclick = () => {
+    const text = $('ruleText').value.trim();
+    if (!text) return;
+    S.vault.rules = S.vault.rules.filter(r => r.text.toLowerCase() !== text.toLowerCase());
+    S.vault.rules.unshift({ text, cat });
+    reapplyRules(); b.classList.add('hidden'); changed(); render();
+    const n = S.vault.txns.filter(x => !x.manual && x.cat === cat && x.desc.toLowerCase().includes(text.toLowerCase())).length;
+    toast(`Rule added: “${text}” → ${cat} (${n} other transaction${n === 1 ? '' : 's'} updated)`);
+  };
+}
+
+/* ================= settings dialog ================= */
+function renderSettings() {
+  $('catList').innerHTML = S.vault.categories.map((c, i) => `<div class="row" style="margin-bottom:6px">
+      <span style="flex:1;min-width:90px">${esc(c.name)}</span>
+      <select data-kind="${i}" aria-label="Type">${Object.entries(KINDS).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <button data-ren="${i}">Rename</button><button data-del="${i}">Delete</button></div>`).join('');
+  $('ruleList').innerHTML = S.vault.rules.map((r, i) => `<div class="row spread" style="margin-bottom:6px">
+      <span>“${esc(r.text)}” → <strong>${esc(r.cat)}</strong></span><button data-rdel="${i}">Delete</button></div>`).join('')
+    || '<p class="muted">No rules yet.</p>';
+  $('newRuleCat').innerHTML = S.vault.categories.map(c => `<option>${esc(c.name)}</option>`).join('');
+
+  $('catList').querySelectorAll('[data-kind]').forEach(s => (s.onchange = () => {
+    S.vault.categories[+s.dataset.kind].kind = s.value; changed(); render();
+  }));
+  $('catList').querySelectorAll('[data-ren]').forEach(b => (b.onclick = () => {
+    const c = S.vault.categories[+b.dataset.ren];
+    const name = (prompt('Rename category:', c.name) || '').trim();
+    if (!name || name === c.name) return;
+    if (findCat(name) && findCat(name) !== c) return toast('A category with that name already exists.');
+    for (const t of S.vault.txns) if (t.cat === c.name) t.cat = name;
+    for (const r of S.vault.rules) if (r.cat === c.name) r.cat = name;
+    if (S.cat === c.name) S.cat = name;
+    c.name = name; changed(); renderSettings(); render();
+  }));
+  $('catList').querySelectorAll('[data-del]').forEach(b => (b.onclick = () => {
+    const i = +b.dataset.del, c = S.vault.categories[i];
+    if (!confirm(`Delete “${c.name}”? Its transactions become Uncategorized and its rules are removed.`)) return;
+    for (const t of S.vault.txns) if (t.cat === c.name) { t.cat = null; t.manual = false; }
+    S.vault.rules = S.vault.rules.filter(r => r.cat !== c.name);
+    S.vault.categories.splice(i, 1);
+    if (S.cat === c.name) S.cat = null;
+    reapplyRules(); changed(); renderSettings(); render();
+  }));
+  $('ruleList').querySelectorAll('[data-rdel]').forEach(b => (b.onclick = () => {
+    S.vault.rules.splice(+b.dataset.rdel, 1); reapplyRules(); changed(); renderSettings(); render();
+  }));
+}
+$('btnSettings').onclick = () => { renderSettings(); $('setDlg').showModal(); };
+$('setClose').onclick = () => $('setDlg').close();
+$('addCat').onclick = () => {
+  const name = $('newCat').value.trim();
+  if (!name) return;
+  if (findCat(name) || name === UNCAT) return toast('That category already exists.');
+  S.vault.categories.push({ name, kind: 'want' }); $('newCat').value = '';
+  changed(); renderSettings(); render();
+};
+$('addRule').onclick = () => {
+  const text = $('newRuleText').value.trim(), cat = $('newRuleCat').value;
+  if (!text || !cat) return;
+  S.vault.rules.unshift({ text, cat }); $('newRuleText').value = '';
+  reapplyRules(); changed(); renderSettings(); render();
+};
+
+/* ================= auto-categorize =================
+   Guesses come from simple scoring, all inside this page (no AI, nothing sent anywhere):
+   1. your history: same merchant before (strongest) + words that usually mean a category (naive Bayes)
+   2. a built-in list of common US merchants   3. generic keywords   4. payment-processor and amount patterns */
+const STATES = new Set('AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC'.split(' '));
+const NOISE = new Set('POS DEBIT CREDIT CARD PURCHASE RECURRING CHECKCARD VISA DDA WEB PPD CCD ACH AUTHORIZED ON STORE INC LLC CO THE OF AND FOR TO FROM AT BY WWW COM NET DES ID INDN'.split(' '));
+const PROCESSORS = /(^|\s)(SQ|TST|SP|PY|PP|PAYPAL|IC|DD|GGL|GOOGLE|CLV|FSP|SMK)\s?\*\s*/;
+const table = obj => Object.entries(obj).flatMap(([cat, list]) => list.split('|').map(p => [p, cat]));
+// Brands match at the start of a word (short ones must be the whole word). The longest match wins ("UBER EATS" beats "UBER").
+const BRANDS = table({
+  Groceries: 'WHOLE FOODS|WHOLEFDS|TRADER JOE|KROGER|SAFEWAY|ALBERTSONS|PUBLIX|WEGMANS|ALDI|LIDL|COSTCO|SAMS CLUB|H E B|HEB|FOOD LION|GIANT EAGLE|STOP & SHOP|SHOPRITE|HANNAFORD|MEIJER|WINCO|SPROUTS|FOOD 4 LESS|RALPHS|VONS|FRED MEYER|QFC|HARRIS TEETER|WINN DIXIE|HY VEE|PIGGLY WIGGLY|INSTACART|MARKET BASKET|GROCERY OUTLET|99 RANCH|H MART|JEWEL OSCO|KING SOOPERS|FRYS FOOD|SAVE A LOT|SCHNUCKS|RALEYS|NEW SEASONS|FRESH MARKET|AMAZON FRESH',
+  Coffee: 'STARBUCKS|DUNKIN|PEETS|BLUE BOTTLE|DUTCH BROS|TIM HORTONS|CARIBOU|PHILZ|COFFEE BEAN|INTELLIGENTSIA|STUMPTOWN|LA COLOMBE|BLACK RIFLE|SCOOTERS COFFEE|BIGGBY',
+  Restaurants: 'MCDONALD|CHIPOTLE|SUBWAY|BURGER KING|WENDYS|TACO BELL|CHICK FIL A|CHICKFILA|KFC|POPEYES|DOMINOS|PIZZA HUT|PAPA JOHN|LITTLE CAESAR|PANERA|FIVE GUYS|IN N OUT|SHAKE SHACK|SONIC DRIVE|ARBYS|JACK IN THE BOX|CARLS JR|DAIRY QUEEN|QDOBA|SWEETGREEN|PANDA EXPRESS|OLIVE GARDEN|APPLEBEES|CHILIS|IHOP|DENNYS|WAFFLE HOUSE|CRACKER BARREL|BUFFALO WILD|RED ROBIN|OUTBACK|TEXAS ROADHOUSE|CHEESECAKE FACTORY|JERSEY MIKE|JIMMY JOHN|FIREHOUSE SUB|WINGSTOP|ZAXBYS|RAISING CANE|WHATABURGER|CULVERS|STEAK N SHAKE|DEL TACO|EL POLLO LOCO|PF CHANG|DOORDASH|UBER EATS|GRUBHUB|POSTMATES|SEAMLESS|CHOWNOW',
+  Transport: 'SHELL|CHEVRON|EXXON|MOBIL|BP|ARCO|TEXACO|SUNOCO|CITGO|MARATHON PETRO|VALERO|PHILLIPS 66|CONOCO|SPEEDWAY|CIRCLE K|WAWA|SHEETZ|QUIKTRIP|RACETRAC|MURPHY USA|CASEYS|LOVES TRAVEL|PILOT TRAVEL|FLYING J|KWIK TRIP|CHARGEPOINT|ELECTRIFY AMERICA|EVGO|TESLA SUPERCHARG|SUPERCHARGER|BLINK CHARGING|UBER|LYFT|PARKMOBILE|SPOTHERO|PAYBYPHONE|IMPARK|LAZ PARKING|SP PLUS|EZPASS|E ZPASS|FASTRAK|SUNPASS|AMTRAK|JIFFY LUBE|VALVOLINE|DISCOUNT TIRE|AUTOZONE|OREILLY AUTO|ADVANCE AUTO|PEP BOYS',
+  'Bills & Utilities': 'COMCAST|XFINITY|VERIZON|AT&T|T MOBILE|TMOBILE|SPECTRUM|COX COMM|CENTURYLINK|FRONTIER COMM|OPTIMUM|GOOGLE FI|MINT MOBILE|CRICKET WIRELESS|BOOST MOBILE|PG&E|CON ED|CONED|DUKE ENERGY|DOMINION ENERGY|XCEL ENERGY|NATIONAL GRID|EVERSOURCE|SO CAL EDISON|SDG&E|PUGET SOUND ENERGY|SEATTLE CITY LIGHT|GEICO|STATE FARM|PROGRESSIVE|ALLSTATE|LIBERTY MUTUAL|FARMERS INS|USAA|LEMONADE|ICLOUD|GOOGLE STORAGE|DROPBOX',
+  Entertainment: 'NETFLIX|SPOTIFY|HULU|DISNEY PLUS|DISNEYPLUS|HBO|PARAMOUNT|PEACOCK|YOUTUBE|APPLE COM BILL|AMC|REGAL|CINEMARK|FANDANGO|TICKETMASTER|STUBHUB|SEATGEEK|EVENTBRITE|STEAM|PLAYSTATION|XBOX|NINTENDO|TWITCH|AUDIBLE|PATREON|SIRIUSXM|BOWLERO|DAVE & BUSTERS|TOPGOLF',
+  Shopping: 'AMAZON|AMZN|TARGET|WALMART|WAL MART|BEST BUY|HOME DEPOT|LOWES|IKEA|ETSY|EBAY|WAYFAIR|MACYS|NORDSTROM|KOHLS|TJ MAXX|TJMAXX|MARSHALLS|ROSS STORES|OLD NAVY|GAP|UNIQLO|H&M|ZARA|NIKE|ADIDAS|LULULEMON|REI|SEPHORA|ULTA|DOLLAR TREE|DOLLAR GENERAL|FAMILY DOLLAR|FIVE BELOW|MICHAELS|HOBBY LOBBY|JOANN|STAPLES|OFFICE DEPOT|APPLE STORE|SHEIN|TEMU|ALIEXPRESS|CHEWY|PETCO|PETSMART|ACE HARDWARE|BARNES & NOBLE|DICKS SPORTING|BURLINGTON',
+  Health: 'CVS|WALGREENS|RITE AID|DUANE READE|KAISER|BLUE CROSS|AETNA|CIGNA|UNITEDHEALTH|HUMANA|LABCORP|QUEST DIAG|ONE MEDICAL|PLANET FITNESS|LA FITNESS|24 HOUR FITNESS|EQUINOX|ORANGETHEORY|PELOTON|CLASSPASS|GOODRX|ZOCDOC|LENSCRAFTERS|WARBY PARKER|GNC|VITAMIN SHOPPE',
+  Housing: 'PROPERTY MANAGEMENT|PROPERTY MGMT|ROCKET MORTGAGE|APPFOLIO|RENTCAFE|YARDI|ENTRATA|BILT RENT|ZILLOW RENT|AVAIL RENT',
+  Income: 'PAYROLL|DIRECT DEP|DIR DEP|SALARY|GUSTO|ADP|PAYCHEX|IRS TREAS|TAX REF|INTEREST PAYMENT|INTEREST PAID|DIVIDEND',
+  Transfers: 'ZELLE|VENMO|CASH APP|SQUARE CASH|ONLINE TRANSFER|TRANSFER TO|TRANSFER FROM|PAYMENT THANK YOU|AUTOPAY|AUTO PAY|CRD PMT|CARD PAYMENT|CREDIT CARD|EPAYMENT|APPLECARD|CHASE CREDIT CRD|CITI CARD|AMEX EPAYMENT|DISCOVER E PAYMENT|CAPITAL ONE',
+  Savings: 'TRANSFER TO SAV|TO SAVINGS|ROBINHOOD|VANGUARD|FIDELITY|SCHWAB|BETTERMENT|WEALTHFRONT|ACORNS|MARCUS',
+});
+// Keywords must be whole words. Weaker evidence than a known brand.
+const KEYWORDS = table({
+  Restaurants: 'PIZZA|PIZZERIA|GRILL|TACO|TACOS|TAQUERIA|SUSHI|BURGER|BURGERS|KITCHEN|BBQ|DINER|BISTRO|RESTAURANT|CANTINA|RAMEN|PHO|THAI|CHINESE|INDIAN|CUISINE|EATERY|TAVERN|PUB|BREWING|BREWERY|WINGS|DELI|NOODLE|NOODLES|BAKERY|DONUT|DONUTS|BAGEL|BAGELS|BURRITO|CHICKEN|STEAKHOUSE|SEAFOOD|KABOB|GYRO',
+  Coffee: 'COFFEE|CAFE|ESPRESSO|ROASTERS|ROASTERY|TEA|BOBA',
+  Groceries: 'MARKET|MKT|GROCERY|GROCERIES|SUPERMARKET|FOODS|MERCADO|BUTCHER|PRODUCE',
+  Transport: 'PARKING|FUEL|GAS|GASOLINE|CHARGING|TOLL|TOLLS|TRANSIT|METRO|TAXI|CAB|CAR WASH|AUTO',
+  Health: 'PHARMACY|DRUG|DRUGS|DENTAL|DENTIST|MEDICAL|CLINIC|HOSPITAL|HEALTH|OPTOMETRY|VISION|CHIROPRACTIC|THERAPY|FITNESS|GYM|YOGA',
+  'Bills & Utilities': 'ELECTRIC|ENERGY|POWER|WATER|SEWER|UTILITY|UTILITIES|INSURANCE|WIRELESS|INTERNET|CABLE|TELECOM',
+  Housing: 'RENT|APARTMENTS|APTS|LEASING|HOA|MORTGAGE',
+  Entertainment: 'CINEMA|CINEMAS|THEATER|THEATRE|MOVIES|TICKETS|GAMES|CONCERT|MUSEUM|BOWLING|ARCADE|GOLF|ZOO',
+  Shopping: 'SHOP|BOUTIQUE|OUTLET|APPAREL|CLOTHING|HARDWARE|BOOKS|BOOKSTORE|FLORIST|GIFTS',
+  Transfers: 'TRANSFER|XFER',
+});
+
+const cleanCache = new Map();
+function cleanTokens(desc) { // "TST* JOES PIZZA #12 SEATTLE WA" → { toks: ['JOES','PIZZA'], proc: 'TST' }
+  if (cleanCache.has(desc)) return cleanCache.get(desc);
+  let s = desc.toUpperCase().replace(/PURCHASE AUTHORIZED ON \d{1,2}\/\d{1,2}/g, ' ').replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, ' ');
+  const proc = s.match(PROCESSORS);
+  s = s.replace(PROCESSORS, ' ').replace(/'/g, '').replace(/[^A-Z0-9& ]+/g, ' ');
+  let toks = s.split(/\s+/).filter(w => w.length > 1 && !/\d/.test(w));
+  if (toks.length >= 3 && STATES.has(toks[toks.length - 1])) { toks.pop(); toks.pop(); } // drop "… CITY ST"
+  const r = { toks: toks.filter(w => !NOISE.has(w)), proc: proc ? proc[2] : null };
+  cleanCache.set(desc, r);
+  return r;
+}
+const merchantKey = desc => cleanTokens(desc).toks.slice(0, 2).join(' ') || desc.toUpperCase().trim();
+const padText = desc => ' ' + desc.toUpperCase().replace(/'/g, '').replace(/[^A-Z0-9&]+/g, ' ').trim() + ' ';
+
+function trainModel() { // learn from every transaction that already has a category
+  const M = { byKey: {}, catN: {}, tokN: {}, vocab: new Set(), n: 0 };
+  for (const t of S.vault.txns) {
+    if (!t.cat) continue;
+    const key = merchantKey(t.desc);
+    (M.byKey[key] ||= {})[t.cat] = (M.byKey[key][t.cat] || 0) + 1;
+    M.catN[t.cat] = (M.catN[t.cat] || 0) + 1; M.n++;
+    const tc = (M.tokN[t.cat] ||= {});
+    for (const w of new Set(cleanTokens(t.desc).toks)) { tc[w] = (tc[w] || 0) + 1; M.vocab.add(w); }
+  }
+  return M;
+}
+
+function guessFor(g, M) { // → up to 3 { cat, pts, reasons[] }, best first
+  const score = {}, why = {};
+  const add = (cat, pts, reason) => {
+    const c = findCat(cat);
+    if (!c || pts <= 0) return; // skip categories you've renamed or deleted
+    score[c.name] = (score[c.name] || 0) + pts;
+    (why[c.name] ||= []).push([pts, reason]);
+  };
+  // 1a. same merchant in your history
+  const hist = M.byKey[g.key];
+  if (hist) {
+    const total = Object.values(hist).reduce((a, b) => a + b, 0);
+    for (const [c, n] of Object.entries(hist)) add(c, (10 * n) / total, `You filed ${g.key} as ${c} ${n} time${n === 1 ? '' : 's'}`);
+  }
+  // 1b. words you usually file under a category (naive Bayes over present words)
+  const toks = [...new Set(g.txns.flatMap(t => cleanTokens(t.desc).toks))].filter(w => M.vocab.has(w));
+  const cats = Object.keys(M.catN);
+  if (toks.length && cats.length >= 2 && M.n >= 5) {
+    const logp = cats.map(c => Math.log(M.catN[c] / M.n) + toks.reduce((a, w) => a + Math.log(((M.tokN[c][w] || 0) + 0.5) / (M.catN[c] + 1)), 0));
+    const mx = Math.max(...logp), ps = logp.map(l => Math.exp(l - mx)), z = ps.reduce((a, b) => a + b, 0);
+    cats.forEach((c, i) => {
+      const p = ps[i] / z, w = toks.reduce((b, x) => ((M.tokN[c][x] || 0) > (M.tokN[c][b] || 0) ? x : b), toks[0]);
+      if (p > 0.2 && M.tokN[c][w]) add(c, 5 * p, `Words like “${w}” usually go under ${c} for you`);
+    });
+  }
+  // 2. built-in merchant list
+  const texts = g.txns.map(t => padText(t.desc));
+  let brand = null;
+  for (const [p, c] of BRANDS) {
+    const needle = ' ' + p + (p.length <= 4 ? ' ' : '');
+    if ((!brand || p.length > brand[0].length) && texts.some(x => x.includes(needle))) brand = [p, c];
+  }
+  if (brand) add(brand[1], 6, `Known merchant: ${brand[0]}`);
+  // 3. keywords
+  const kwCats = new Set();
+  for (const [kw, c] of KEYWORDS)
+    if (!kwCats.has(c) && texts.some(x => x.includes(` ${kw} `))) { kwCats.add(c); add(c, 3, `Description mentions “${kw}”`); }
+  // 4. payment processors and amount patterns
+  const procs = new Set(g.txns.map(t => cleanTokens(t.desc).proc));
+  if (procs.has('TST')) add('Restaurants', 2, 'Paid through Toast (TST*), which restaurants use');
+  if (procs.has('DD')) add('Restaurants', 2, 'Paid through DoorDash (DD*)');
+  if (g.txns.length >= 3 && new Set(g.txns.map(t => t.date.slice(0, 7))).size >= 3) {
+    const amts = g.txns.map(t => Math.abs(t.amount)).sort((a, b) => a - b), med = amts[amts.length >> 1];
+    if (amts.every(a => Math.abs(a - med) <= med * 0.02 + 0.01)) add('Bills & Utilities', 2, 'Same amount every month, like a bill or subscription');
+  }
+  if (g.txns.every(t => t.amount > 0)) add('Income', 1.5, 'Money coming in');
+
+  return Object.entries(score).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([cat, pts]) => ({ cat, pts, reasons: why[cat].sort((a, b) => b[0] - a[0]).slice(0, 2).map(r => r[1]) }));
+}
+
+// Default rule text (rules match raw text): the merchant name if it literally appears in every description,
+// otherwise the descriptions' shared beginning, cut before store numbers. Empty = don't suggest a rule.
+function ruleTextFor(g) {
+  const descs = g.txns.map(t => t.desc.toUpperCase());
+  if (descs.every(d => d.includes(g.key)) && g.key.length >= 3) return g.key.toLowerCase();
+  let p = descs[0];
+  for (const d of descs) while (!d.startsWith(p)) p = p.slice(0, -1);
+  if (descs.some(d => d.length > p.length && d[p.length] !== ' ')) p = p.replace(/\S+$/, ''); // don't end mid-word
+  p = p.replace(PROCESSORS, '').replace(/[#\d].*$/, '').trim();
+  return p.length >= 4 && descs.every(d => d.includes(p)) ? p.toLowerCase() : '';
+}
+
+const AC = { skipped: new Set(), done: 0, current: null };
+function uncatGroups() { // uncategorized transactions grouped by merchant, biggest money first
+  const m = new Map();
+  for (const t of S.vault.txns) {
+    if (t.cat) continue;
+    const k = merchantKey(t.desc);
+    if (AC.skipped.has(k)) continue;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(t);
+  }
+  return [...m].map(([key, txns]) => ({ key, txns, total: txns.reduce((a, t) => a + Math.abs(t.amount), 0) })).sort((a, b) => b.total - a.total);
+}
+function showAutoCard() {
+  const body = $('acBody'), groups = uncatGroups();
+  if (!groups.length) {
+    AC.current = null;
+    body.innerHTML = `<p>All done: ${AC.done} merchant${AC.done === 1 ? '' : 's'} categorized${AC.skipped.size ? `, ${AC.skipped.size} skipped` : ''}.</p>
+      <button class="primary" id="acFinish">Close</button>`;
+    $('acFinish').onclick = () => $('acDlg').close(); $('acFinish').focus();
+    return;
+  }
+  const g = groups[0], guesses = guessFor(g, trainModel()), top = guesses[0], rt = ruleTextFor(g);
+  AC.current = { g, guesses };
+  const conf = !top ? '' : top.pts >= 8 && (!guesses[1] || top.pts >= 2 * guesses[1].pts) ? 'High' : top.pts >= 4 ? 'Medium' : 'Low';
+  const sum = g.txns.reduce((a, t) => a + t.amount, 0);
+  const sorted = g.txns.slice().sort((a, b) => b.date.localeCompare(a.date));
+  body.innerHTML = `
+    <p class="muted" style="margin:0">${groups.length} merchant${groups.length === 1 ? '' : 's'} left</p>
+    <h3 class="ac-key">${esc(g.key)}</h3>
+    <p class="muted" style="margin:0">${g.txns.length} transaction${g.txns.length === 1 ? '' : 's'} · ${money.format(sum)} total</p>
+    <table class="ac-samples">${sorted.slice(0, 4).map(t => `<tr><td>${t.date}</td><td class="desc">${esc(t.desc)}</td><td class="num">${money.format(t.amount)}</td></tr>`).join('')}
+      ${g.txns.length > 4 ? `<tr><td colspan="3" class="muted">+ ${g.txns.length - 4} more</td></tr>` : ''}</table>
+    <div class="ac-guess">${top
+      ? `Guess: <strong>${esc(top.cat)}</strong><span class="conf">${conf} confidence</span><ul>${top.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>`
+      : 'No guess for this one. Pick a category below.'}</div>
+    <div class="row">
+      ${top ? `<button class="primary" data-pick="${esc(top.cat)}">✓ ${esc(top.cat)}<kbd>Enter</kbd></button>` : ''}
+      ${guesses.slice(1).map((x, i) => `<button data-pick="${esc(x.cat)}">${esc(x.cat)}<kbd>${i + 1}</kbd></button>`).join('')}
+      <select id="acOther" aria-label="Other category"><option value="">Other category…</option>${S.vault.categories.map(c => `<option>${esc(c.name)}</option>`).join('')}</select>
+      <button id="acSkip">Skip<kbd>S</kbd></button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label><input type="checkbox" id="acRemember" ${rt ? 'checked' : ''}> Remember: file everything containing</label>
+      <input id="acRuleText" value="${esc(rt)}" size="16" aria-label="Rule text"> <span class="muted">the same way</span>
+    </div>`;
+  body.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => acApply(b.dataset.pick)));
+  $('acOther').onchange = e => { if (e.target.value) acApply(e.target.value); };
+  $('acSkip').onclick = acSkip;
+  body.focus(); // not the dropdown: typing in a focused <select> would pick a category
+}
+function acApply(cat) {
+  const { g } = AC.current;
+  for (const t of g.txns) { t.cat = cat; t.manual = true; }
+  const text = $('acRuleText').value.trim();
+  if ($('acRemember').checked && text) {
+    S.vault.rules = S.vault.rules.filter(r => r.text.toLowerCase() !== text.toLowerCase());
+    S.vault.rules.unshift({ text, cat });
+    reapplyRules(); // may also sort other uncategorized transactions from this merchant
+  }
+  AC.done++; changed(); render(); showAutoCard();
+}
+function acSkip() { AC.skipped.add(AC.current.g.key); showAutoCard(); }
+$('acDlg').addEventListener('keydown', e => {
+  if (!AC.current || e.target.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.id === 'acRuleText' && e.key !== 'Enter') return;
+  const { guesses } = AC.current;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (e.target.dataset.pick) acApply(e.target.dataset.pick);
+    else if (e.target.id === 'acSkip') acSkip();
+    else if (guesses[0]) acApply(guesses[0].cat);
+  } else if ((e.key === '1' || e.key === '2') && guesses[+e.key]) { e.preventDefault(); acApply(guesses[+e.key].cat); }
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); acSkip(); }
+});
+$('btnAuto').onclick = () => { AC.skipped = new Set(); AC.done = 0; $('acDlg').showModal(); showAutoCard(); };
+$('acClose').onclick = () => $('acDlg').close();
+
+/* ================= demo mode: open index.html?demo for generated fake data (never saved) ================= */
+if (new URLSearchParams(location.search).has('demo')) {
+  S.demo = true; S.vault = newVault();
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const shops = [['STARBUCKS #1234', 4, 7], ['WHOLE FOODS MKT #102', 25, 90], ['TRADER JOE S #55', 20, 70], ['CHIPOTLE 0456', 10, 16],
+    ['UBER *TRIP', 8, 30], ['NETFLIX.COM', 15.49, 15.49], ['AMAZON MKTPLACE', 12, 80], ['SHELL OIL 5521', 30, 55], ['CORNER BOOKS', 10, 40]];
+  for (let i = 0; i < 150; i++) {
+    const d = addDays(iso(new Date()), -i);
+    for (let k = 0; k < 3; k++) if (rnd() < 0.4) {
+      const [desc, lo, hi] = shops[Math.floor(rnd() * shops.length)];
+      S.vault.txns.push({ id: `demo-${i}-${k}`, date: d, desc, amount: -Math.round((lo + rnd() * (hi - lo)) * 100) / 100, cat: ruleCat(desc), manual: false });
+    }
+    if (d.endsWith('-01') || d.endsWith('-15')) S.vault.txns.push({ id: `pay-${i}`, date: d, desc: 'ACME CORP PAYROLL', amount: 2400, cat: 'Income', manual: false });
+  }
+  startApp();
+} else initLock();
+</script>
+</body>
+</html>
