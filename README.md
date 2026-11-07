@@ -1,5 +1,8 @@
 # Budget
 
+![Budget app showing a month of spending by category, share of income spent on needs, wants and savings, and the transaction list](docs/screenshot.png)
+<sub>Screenshot uses the built-in demo mode's generated fake data.</sub>
+
 A private spending tracker. Import your bank's CSV export, sort transactions into categories (Groceries, Coffee, Restaurants…), and see how much you spent per day, week, month or overall, with a breakdown by category and what share of your income went to needs, wants and savings.
 
 Everything is stored in one encrypted file, `vault.json`. A tiny local server (`server.py`) serves the page and stores that file, but it only ever receives encrypted data. The page loads no external scripts and contacts nothing else.
