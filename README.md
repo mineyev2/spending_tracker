@@ -49,7 +49,7 @@ Then open **http://localhost:8000** and log in. The first visit asks you to choo
 
 ### Categorizing
 - No AI or external service is used. Categorizing is plain text matching.
-- A **rule** is "description contains `X` → category". Matching ignores case, rules are checked top to bottom, and the first match wins.
+- A **rule** is "description contains `X` → category". Matching ignores case, rules are checked top to bottom, and the first match wins. In **Categories & rules**, the rule box doubles as a search (by rule text or category); press Enter or **Add** to create a rule from what you typed.
 - New transactions are categorized by the rules on import. Anything unmatched is **Uncategorized**.
 - Choosing a category by hand marks that transaction as manual, and rules never overwrite it. The page then offers to turn your choice into a rule. It suggests the first words of the description, which you can edit.
 - Adding, deleting or renaming rules re-runs them over all non-manual transactions.
@@ -61,7 +61,7 @@ Then open **http://localhost:8000** and log in. The first visit asks you to choo
   - Uncategorized transactions count as spending until you categorize them.
 
 ### Auto-categorize
-The **Auto-categorize (N)** button reviews uncategorized transactions one merchant at a time, starting with the biggest totals. Each card shows a guess, a confidence level and the reasons. **Enter** approves, **1/2** picks a runner-up, the dropdown picks anything else, and **S** skips. "Remember" (on by default, editable) also adds a rule for future imports.
+The **Auto-categorize (N)** button reviews uncategorized transactions one merchant at a time, starting with the biggest totals. Each card shows a guess, a confidence level and the reasons. **Enter** approves, **1/2** picks a runner-up, the dropdown picks anything else (or **+ New category…** creates one, with its type, and applies it), and **S** skips. "Remember" (on by default, editable) also adds a rule for future imports.
 
 Guesses come from scoring inside the page. No AI is used and nothing is sent anywhere:
 - **Merchant names are cleaned up first:** store numbers, dates, "CITY ST" endings, bank words (`POS`, `DEBIT`, `PURCHASE AUTHORIZED ON…`) and processor prefixes (`SQ *`, `TST*`…) are removed. So `TST* JOES PIZZA #12 SEATTLE WA` becomes `JOES PIZZA`, and charges from the same merchant are reviewed together.
@@ -82,7 +82,7 @@ Guesses come from scoring inside the page. No AI is used and nothing is sent any
 
 ### Periods and charts
 - **Day / Week / Month / All**, with arrows to step through periods. Weeks start on Sunday (`WEEK_START` in the code).
-- **Share of income:** for the selected period, Needs, Wants, Savings and Uncategorized are each shown as a percent of that period's Income (bucket total ÷ Income). Below the bars is the share of income not yet spent or saved, or how much you went over. If a bucket exceeds 100%, the bars rescale and a marker shows where 100% is. Periods with no income (often Day or Week) show amounts only.
+- **Share of income:** for the selected period, Needs, Wants, Savings and Uncategorized are each shown as a percent of that period's Income (bucket total ÷ Income). A fifth bar, **Money left**, is Income minus all four (negative if you spent and saved more than you earned). If a bucket exceeds 100%, the bars rescale and a marker shows where 100% is. Periods with no income (often Day or Week) show amounts only.
 - Clicking a category in Spending by category filters the transaction list to it.
 
 ### Vault contents (after decryption)

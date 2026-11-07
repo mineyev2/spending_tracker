@@ -10,14 +10,14 @@
   color-scheme: light;
   --bg: #f6f6f4; --surface: #fcfcfb; --text: #0b0b0b; --text2: #52514e; --muted: #85847e;
   --line: #e4e3de; --hover: #efeeea; --series: #2a78d6; --series-strong: #256abf; --danger: #c0392b;
-  --need: #2a78d6; --want: #eb6834; --save: #1baf7a; --uncat: #a3a29c;
+  --need: #2a78d6; --want: #eb6834; --save: #1baf7a; --uncat: #a3a29c; --left: #6250d6;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --bg: #121211; --surface: #1a1a19; --text: #f0efec; --text2: #c3c2b7; --muted: #8f8e86;
     --line: #2c2c2a; --hover: #242422; --series: #3987e5; --series-strong: #6da7ec; --danger: #e66767;
-    --need: #3987e5; --want: #d95926; --save: #199e70; --uncat: #6b6a65;
+    --need: #3987e5; --want: #d95926; --save: #199e70; --uncat: #6b6a65; --left: #9085e9;
   }
 }
 * { box-sizing: border-box; }
@@ -211,8 +211,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <div>
       <h2>Rules</h2>
       <p class="muted" style="margin-top:0">If a description contains the text (any case), it gets that category. Rules are checked top to bottom; first match wins. Categories you set by hand are never overwritten.</p>
+      <div class="row" style="margin-bottom:8px"><input id="newRuleText" placeholder="Search, or type text to add…" aria-label="Search or add rule text"><select id="newRuleCat" aria-label="Category for new rule"></select><button id="addRule">Add</button></div>
+      <p class="muted" style="margin:0 0 6px;font-size:12px">Rules: <span id="ruleCount"></span></p>
       <div class="scroll" style="max-height:300px"><div id="ruleList"></div></div>
-      <div class="row" style="margin-top:8px"><input id="newRuleText" placeholder="Description contains…"><select id="newRuleCat"></select><button id="addRule">Add</button></div>
     </div>
   </div>
 </dialog>
@@ -658,12 +659,13 @@ function renderBreakdown(txns) {
 
 function renderBuckets(txns, income) {
   // Each bucket as a share of the period's Income. Money moved back out of savings counts as negative savings.
-  const BUCKETS = [['need', 'Needs'], ['want', 'Wants'], ['savings', 'Savings'], ['uncat', 'Uncategorized']];
+  const BUCKETS = [['need', 'Needs'], ['want', 'Wants'], ['savings', 'Savings'], ['uncat', 'Uncategorized'], ['left', 'Money left']];
   const sums = { need: 0, want: 0, savings: 0, uncat: 0 };
   for (const t of txns) { const k = kindOf(t.cat); if (k in sums) sums[k] -= t.amount; }
+  sums.left = income - sums.need - sums.want - sums.savings - sums.uncat; // negative = spent/saved more than earned
   const pct = v => (income > 0 ? (v / income) * 100 : 0);
   const scale = Math.max(100, ...BUCKETS.map(([k]) => pct(sums[k]))); // bars stretch past 100% if a bucket exceeds income
-  const fmtPct = v => `${v >= 10 || v === 0 ? Math.round(v) : v.toFixed(1)}%`;
+  const fmtPct = v => `${Math.abs(v) >= 10 || v === 0 ? Math.round(v) : v.toFixed(1)}%`;
   let html = BUCKETS.map(([k, label]) => {
     const p = pct(sums[k]), w = Math.max(0, (p / scale) * 100);
     return `<div class="bk"><span>${label}</span>
@@ -673,12 +675,7 @@ function renderBuckets(txns, income) {
       </span>
       <span class="val">${income > 0 ? fmtPct(p) : '—'}<small>${money0.format(sums[k])}</small></span></div>`;
   }).join('');
-  if (income > 0) {
-    const left = income - sums.need - sums.want - sums.savings - sums.uncat;
-    html += `<p class="bk-note">${left >= 0
-      ? `${fmtPct(pct(left))} of income (${money0.format(left)}) not yet spent or saved.`
-      : `Spent and saved ${money0.format(-left)} more than you earned this period.`}</p>`;
-  } else {
+  if (income <= 0) {
     html += '<p class="bk-note">No income in this period, so percentages can’t be calculated. Try Month or All.</p>';
   }
   $('buckets').innerHTML = html;
@@ -742,10 +739,10 @@ function renderSettings() {
       <span style="flex:1;min-width:90px">${esc(c.name)}</span>
       <select data-kind="${i}" aria-label="Type">${Object.entries(KINDS).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <button data-ren="${i}">Rename</button><button data-del="${i}">Delete</button></div>`).join('');
-  $('ruleList').innerHTML = S.vault.rules.map((r, i) => `<div class="row spread" style="margin-bottom:6px">
-      <span>“${esc(r.text)}” → <strong>${esc(r.cat)}</strong></span><button data-rdel="${i}">Delete</button></div>`).join('')
-    || '<p class="muted">No rules yet.</p>';
+  const keepCat = $('newRuleCat').value;
   $('newRuleCat').innerHTML = S.vault.categories.map(c => `<option>${esc(c.name)}</option>`).join('');
+  if (findCat(keepCat || '')) $('newRuleCat').value = keepCat;
+  renderRuleList();
 
   $('catList').querySelectorAll('[data-kind]').forEach(s => (s.onchange = () => {
     S.vault.categories[+s.dataset.kind].kind = s.value; changed(); render();
@@ -769,10 +766,20 @@ function renderSettings() {
     if (S.cat === c.name) S.cat = null;
     reapplyRules(); changed(); renderSettings(); render();
   }));
+}
+function renderRuleList() { // the add-rule box doubles as a search: matches rule text or category
+  const q = $('newRuleText').value.trim().toLowerCase();
+  const shown = S.vault.rules.map((r, i) => [r, i]).filter(([r]) => !q || r.text.toLowerCase().includes(q) || r.cat.toLowerCase().includes(q));
+  $('ruleList').innerHTML = shown.map(([r, i]) => `<div class="row spread" style="margin-bottom:6px">
+      <span>“${esc(r.text)}” → <strong>${esc(r.cat)}</strong></span><button data-rdel="${i}">Delete</button></div>`).join('')
+    || `<p class="muted">${q ? 'No rules match. Pick a category and click Add to create one.' : 'No rules yet.'}</p>`;
+  $('ruleCount').textContent = q ? `${shown.length} of ${S.vault.rules.length}` : `${S.vault.rules.length}`;
   $('ruleList').querySelectorAll('[data-rdel]').forEach(b => (b.onclick = () => {
-    S.vault.rules.splice(+b.dataset.rdel, 1); reapplyRules(); changed(); renderSettings(); render();
+    S.vault.rules.splice(+b.dataset.rdel, 1); reapplyRules(); changed(); renderRuleList(); render();
   }));
 }
+$('newRuleText').oninput = renderRuleList;
+$('newRuleText').onkeydown = e => { if (e.key === 'Enter') $('addRule').click(); };
 $('btnSettings').onclick = () => { renderSettings(); $('setDlg').showModal(); };
 $('setClose').onclick = () => $('setDlg').close();
 $('addCat').onclick = () => {
@@ -785,8 +792,10 @@ $('addCat').onclick = () => {
 $('addRule').onclick = () => {
   const text = $('newRuleText').value.trim(), cat = $('newRuleCat').value;
   if (!text || !cat) return;
+  S.vault.rules = S.vault.rules.filter(r => r.text.toLowerCase() !== text.toLowerCase()); // replace, don't duplicate
   S.vault.rules.unshift({ text, cat }); $('newRuleText').value = '';
   reapplyRules(); changed(); renderSettings(); render();
+  toast(`Rule added: “${text}” → ${cat}`);
 };
 
 /* ================= auto-categorize =================
@@ -955,15 +964,24 @@ function showAutoCard() {
     <div class="row">
       ${top ? `<button class="primary" data-pick="${esc(top.cat)}">✓ ${esc(top.cat)}<kbd>Enter</kbd></button>` : ''}
       ${guesses.slice(1).map((x, i) => `<button data-pick="${esc(x.cat)}">${esc(x.cat)}<kbd>${i + 1}</kbd></button>`).join('')}
-      <select id="acOther" aria-label="Other category"><option value="">Other category…</option>${S.vault.categories.map(c => `<option>${esc(c.name)}</option>`).join('')}</select>
+      <select id="acOther" aria-label="Other category"><option value="">Other category…</option>${S.vault.categories.map(c => `<option>${esc(c.name)}</option>`).join('')}<option value="__new">+ New category…</option></select>
       <button id="acSkip">Skip<kbd>S</kbd></button>
+    </div>
+    <div class="row hidden" id="acNewRow" style="margin-top:10px">
+      <input id="acNewName" placeholder="New category name" aria-label="New category name">
+      <select id="acNewKind" aria-label="Type">${Object.entries(KINDS).map(([k, l]) => `<option value="${k}" ${k === 'want' ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <button class="primary" id="acNewGo">Create &amp; apply</button>
     </div>
     <div class="row" style="margin-top:12px">
       <label><input type="checkbox" id="acRemember" ${rt ? 'checked' : ''}> Remember: file everything containing</label>
       <input id="acRuleText" value="${esc(rt)}" size="16" aria-label="Rule text"> <span class="muted">the same way</span>
     </div>`;
   body.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => acApply(b.dataset.pick)));
-  $('acOther').onchange = e => { if (e.target.value) acApply(e.target.value); };
+  $('acOther').onchange = e => {
+    if (e.target.value === '__new') { $('acNewRow').classList.remove('hidden'); $('acNewName').focus(); }
+    else if (e.target.value) acApply(e.target.value);
+  };
+  $('acNewGo').onclick = acCreate;
   $('acSkip').onclick = acSkip;
   body.focus(); // not the dropdown: typing in a focused <select> would pick a category
 }
@@ -978,14 +996,21 @@ function acApply(cat) {
   }
   AC.done++; changed(); render(); showAutoCard();
 }
+function acCreate() {
+  const name = $('acNewName').value.trim();
+  if (!name || name === UNCAT) return $('acNewName').focus();
+  if (!findCat(name)) S.vault.categories.push({ name, kind: $('acNewKind').value });
+  acApply(findCat(name).name);
+}
 function acSkip() { AC.skipped.add(AC.current.g.key); showAutoCard(); }
 $('acDlg').addEventListener('keydown', e => {
   if (!AC.current || e.target.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.target.id === 'acRuleText' && e.key !== 'Enter') return;
+  if (e.target.type === 'text' && e.key !== 'Enter') return; // typing in the rule / new-category boxes
   const { guesses } = AC.current;
   if (e.key === 'Enter') {
     e.preventDefault();
-    if (e.target.dataset.pick) acApply(e.target.dataset.pick);
+    if (e.target.id === 'acNewName' || e.target.id === 'acNewGo') acCreate();
+    else if (e.target.dataset.pick) acApply(e.target.dataset.pick);
     else if (e.target.id === 'acSkip') acSkip();
     else if (guesses[0]) acApply(guesses[0].cat);
   } else if ((e.key === '1' || e.key === '2') && guesses[+e.key]) { e.preventDefault(); acApply(guesses[+e.key].cat); }
