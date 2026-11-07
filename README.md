@@ -1,6 +1,6 @@
 # Budget
 
-![Budget app showing a month of spending by category, share of income spent on needs, wants and savings, and the transaction list](docs/screenshot.png)
+![Budget app showing a month of spending by category, share of income spent on needs, wants and savings, and the transaction list](docs/screenshot-2026-11-07.png)
 <sub>Screenshot uses the built-in demo mode's generated fake data.</sub>
 
 A private spending tracker. Import your bank's CSV export, sort transactions into categories (Groceries, Coffee, Restaurants…), and see how much you spent per day, week, month or overall, with a breakdown by category and what share of your income went to needs, wants and savings.
