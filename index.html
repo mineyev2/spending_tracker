@@ -369,9 +369,11 @@ const S = {
 const kindOf = cat => (cat ? (S.vault.categories.find(c => c.name === cat) || { kind: 'want' }).kind : 'uncat');
 const catOf = t => t.cat || UNCAT;
 const spendOf = t => (SPEND_KINDS.has(kindOf(t.cat)) ? -t.amount : 0); // refunds reduce spending
+// Compare letters/numbers only, so a rule "UBER EATS" matches "UBER *EATS" and "uber-eats".
+const normText = s => ` ${s.toLowerCase().replace(/[^a-z0-9&]+/g, ' ').trim()} `;
 function ruleCat(desc) {
-  const d = desc.toLowerCase();
-  const r = S.vault.rules.find(r => d.includes(r.text.toLowerCase()));
+  const d = normText(desc);
+  const r = S.vault.rules.find(r => normText(r.text).trim() && d.includes(normText(r.text).trim()));
   return r ? r.cat : null;
 }
 function reapplyRules() { for (const t of S.vault.txns) if (!t.manual) t.cat = ruleCat(t.desc); }
@@ -477,6 +479,10 @@ function startApp() {
   // Vaults from before need/want/savings: old 'spend' categories get a sensible default type.
   for (const c of S.vault.categories) if (c.kind === 'spend') c.kind = DEFAULT_KINDS[c.name] === 'need' ? 'need' : 'want';
   if (!S.vault.categories.some(c => c.kind === 'savings') && !findCat('Savings')) S.vault.categories.push({ name: 'Savings', kind: 'savings' });
+  // Rules may match more now than when these were imported (e.g. punctuation-insensitive matching).
+  let caught = 0;
+  for (const t of S.vault.txns) if (!t.cat && !t.manual) { t.cat = ruleCat(t.desc); if (t.cat) caught++; }
+  if (caught && !S.demo) changed();
   S.anchor = latestDate() || iso(new Date());
   S.cat = null; S.kind = null; showSaveState(); render();
 }
@@ -941,7 +947,7 @@ function offerRule(t, cat) {
     S.vault.rules = S.vault.rules.filter(r => r.text.toLowerCase() !== text.toLowerCase());
     S.vault.rules.unshift({ text, cat });
     reapplyRules(); b.classList.add('hidden'); changed(); render();
-    const n = S.vault.txns.filter(x => !x.manual && x.cat === cat && x.desc.toLowerCase().includes(text.toLowerCase())).length;
+    const n = S.vault.txns.filter(x => !x.manual && x.cat === cat && normText(x.desc).includes(normText(text).trim())).length;
     toast(`Rule added: “${text}” → ${cat} (${n} other transaction${n === 1 ? '' : 's'} updated)`);
   };
 }
