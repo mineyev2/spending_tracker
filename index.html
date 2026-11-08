@@ -74,6 +74,19 @@ header.top { margin-bottom: 16px; }
 .bk .track { position: relative; height: 14px; background: var(--hover); border-radius: 4px; }
 .bk .fill { height: 100%; border-radius: 4px; }
 .bk .mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text2); }
+.bk .zone { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; opacity: .25; }
+.bk .fill { position: relative; }
+.bk .tgt { position: absolute; top: -6px; bottom: -6px; width: 0; border-left: 2px solid var(--text); }
+.bk .tgt b { position: absolute; bottom: 100%; left: 0; transform: translateX(-50%); font-size: 10px; font-weight: 600; color: var(--text2); white-space: nowrap; line-height: 1; padding-bottom: 1px; }
+.bk.has-tgt { padding-top: 18px; }
+.bk .val .ok { color: var(--text2); } .bk .val .over { color: #d04040; font-weight: 600; }
+.ded p { margin: 4px 0 10px; color: var(--text2); }
+.ded .row { gap: 10px; flex-wrap: wrap; align-items: center; }
+.ded input[type=number] { width: 90px; font: inherit; padding: 3px 6px; }
+.ded input[type=text] { width: 140px; font: inherit; padding: 3px 6px; }
+.tag-auto { font-size: 11px; color: var(--text2); background: var(--hover); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.tgt-edit { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; color: var(--text2); font-size: 13px; }
+.tgt-edit input { width: 52px; font: inherit; padding: 2px 4px; }
 .bk .val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .bk .val small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
 .bk-note { color: var(--text2); margin: 10px 0 0; }
@@ -159,7 +172,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <strong id="rangeLabel"></strong>
   </div>
 
-  <div class="tiles">
+  <div class="tiles hidden">
     <div class="card tile"><div class="l">Spent</div><div class="v" id="tSpent"></div></div>
     <div class="card tile"><div class="l">Income</div><div class="v" id="tIncome"></div></div>
     <div class="card tile"><div class="l">Uncategorized</div><div class="v" id="tUncat"></div></div>
@@ -171,11 +184,17 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <div class="row spread" style="margin-bottom:10px">
         <h2 style="margin:0">Share of income</h2>
         <div class="seg seg-sm" id="incomeSeg" role="group" aria-label="Compare against">
-          <button data-base="prorated" title="Last month's income, scaled to the days you're viewing">Last month, prorated</button><button data-base="actual" title="Income received in this period">Actual this period</button>
+          <button data-base="last" title="Last month's full income — see how much is left to spend this month">Last month's income</button><button data-base="actual" title="Income received in this period">Actual this period</button>
         </div>
       </div>
       <div id="buckets"></div>
     </div>
+  </div>
+
+  <div class="card ded" style="margin-top:16px">
+    <h2 style="margin:0">Paycheck deductions</h2>
+    <p>Money taken out of your paycheck before it reaches your bank (like a 401k). For each paycheck, this adds the amount as income, plus an expense in the category you pick (Savings for a 401k, Bills &amp; Utilities for medical insurance), so your totals match what you really earned, saved and spent.</p>
+    <div id="dedBody"></div>
   </div>
 
   <div class="card" style="margin-top:16px">
@@ -646,6 +665,94 @@ $('modeSeg').onclick = e => { const m = e.target.dataset.m; if (m) { S.mode = m;
 $('clearCat').onclick = () => { S.cat = null; S.kind = null; render(); };
 
 /* ================= render ================= */
+/* ================= paycheck deductions ================= */
+// Not stored as transactions: generated on the fly from each paycheck, so they never duplicate on re-import.
+// S.vault.deductions = { match: 'text in paycheck description', items: [{ name, history: [{ from: 'YYYY-MM-DD', amount }] }] }
+function deductions() {
+  if (!S.vault.deductions) {
+    const inc = S.vault.txns.filter(t => t.amount > 0 && kindOf(t.cat) === 'income'), n = {};
+    for (const t of inc) { const w = t.desc.replace(/[^A-Za-z ]+/g, ' ').trim().split(/\s+/).slice(0, 2).join(' '); if (w) n[w] = (n[w] || 0) + 1; }
+    const guess = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
+    S.vault.deductions = { match: guess ? guess[0] : 'PAYROLL', items: [{ name: '401k', cat: 'Savings', history: [] }] };
+  }
+  return S.vault.deductions;
+}
+const isPaycheck = t => { const m = deductions().match.trim().toLowerCase(); return !!m && t.amount > 0 && !t.auto && t.desc.toLowerCase().includes(m); };
+const amountOn = (item, date) => { let a = 0; for (const h of item.history) if (h.from <= date) a = h.amount; return a; };
+function autoTxns() {
+  const D = deductions(), out = [];
+  const incCat = (S.vault.categories.find(c => c.kind === 'income') || { name: 'Income' }).name;
+  const savCat = (findCat('Savings') || S.vault.categories.find(c => c.kind === 'savings') || { name: 'Savings' }).name;
+  for (const p of S.vault.txns) {
+    if (!isPaycheck(p)) continue;
+    for (const it of D.items) {
+      const a = amountOn(it, p.date);
+      if (a <= 0) continue;
+      out.push({ id: `auto-${it.name}-${p.id}-in`, date: p.date, desc: `${it.name} (from paycheck)`, amount: a, cat: incCat, auto: it.name });
+      const cat = it.cat && findCat(it.cat) ? findCat(it.cat).name : savCat;
+      out.push({ id: `auto-${it.name}-${p.id}-out`, date: p.date, desc: `${it.name} (paycheck deduction)`, amount: -a, cat, auto: it.name });
+    }
+  }
+  return out;
+}
+const allTxns = () => S.vault.txns.concat(autoTxns());
+function renderDeductions() {
+  const D = deductions(), today = iso(new Date());
+  const count = S.vault.txns.filter(isPaycheck).length;
+  $('dedBody').innerHTML = D.items.map((it, i) => `<div class="row" style="margin-bottom:8px">
+      <input type="text" data-dname="${i}" value="${esc(it.name)}" aria-label="Deduction name">
+      <label>$ <input type="number" min="0" step="0.01" data-ded="${i}" value="${amountOn(it, today) || ''}" placeholder="0.00"> per paycheck</label>
+      <label>goes to <select data-dcat="${i}">${S.vault.categories.filter(c => c.kind !== 'income' && c.kind !== 'ignore')
+        .map(c => `<option ${c.name === (it.cat || 'Savings') ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+        <span class="muted">(${KIND_LABELS[kindOf(it.cat || 'Savings')] || ''})</span></label>
+      <button data-ddel="${i}" title="Remove this deduction">Remove</button>
+      ${it.history.length > 1 ? `<span class="muted">(changed ${esc(it.history[it.history.length - 1].from)}; earlier paychecks keep the old amount)</span>` : ''}
+    </div>`).join('') + (S.dedDraft ? `<div class="row" style="margin-bottom:8px" id="dedDraft">
+      <input type="text" id="ddName" placeholder="Name, e.g. Medical insurance" aria-label="Deduction name">
+      <label>$ <input type="number" min="0" step="0.01" id="ddAmt" placeholder="0.00"> per paycheck</label>
+      <label>goes to <select id="ddCat">${S.vault.categories.filter(c => c.kind !== 'income' && c.kind !== 'ignore')
+        .map(c => `<option ${c.name === (findCat('Bills & Utilities') ? findCat('Bills & Utilities').name : 'Savings') ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <button class="primary" id="ddOk">Add</button><button id="ddCancel">Cancel</button>
+      <span class="muted">Press Enter to add, Esc to cancel</span></div>`
+    : `<div class="row" style="margin-bottom:10px"><button id="dedAdd">+ Add deduction</button></div>`) + `<div class="row muted">Paychecks are deposits containing <input type="text" id="dedMatch" value="${esc(D.match)}"> — found ${count}.</div>`;
+  $('dedBody').querySelectorAll('[data-ded]').forEach(inp => (inp.onchange = () => {
+    const it = D.items[+inp.dataset.ded], v = Math.max(0, Math.round((+inp.value || 0) * 100) / 100);
+    if (!it.history.length) it.history.push({ from: '0000-01-01', amount: v });  // first amount applies to all past paychecks
+    else if (amountOn(it, today) !== v) {
+      const last = it.history[it.history.length - 1];
+      if (last.from === today) last.amount = v; else it.history.push({ from: today, amount: v }); // changes apply from today on
+    }
+    if (!S.demo) changed();
+    render();
+  }));
+  const save = () => { if (!S.demo) changed(); render(); };
+  $('dedBody').querySelectorAll('[data-dcat]').forEach(sel => (sel.onchange = () => { D.items[+sel.dataset.dcat].cat = sel.value; save(); }));
+  $('dedBody').querySelectorAll('[data-dname]').forEach(inp => (inp.onchange = () => {
+    const name = inp.value.trim();
+    if (!name || D.items.some((x, j) => j !== +inp.dataset.dname && x.name === name)) return render();
+    D.items[+inp.dataset.dname].name = name; save();
+  }));
+  $('dedBody').querySelectorAll('[data-ddel]').forEach(b => (b.onclick = () => {
+    const it = D.items[+b.dataset.ddel];
+    if (!confirm(`Remove ${it.name}? Its entries will disappear from every paycheck.`)) return;
+    D.items.splice(+b.dataset.ddel, 1); save();
+  }));
+  if (!S.dedDraft) $('dedAdd').onclick = () => { S.dedDraft = true; render(); $('ddName').focus(); };
+  else {
+    const commit = () => {
+      const name = $('ddName').value.trim(), v = Math.max(0, Math.round((+$('ddAmt').value || 0) * 100) / 100);
+      if (!name) return $('ddName').focus();
+      if (D.items.some(x => x.name.toLowerCase() === name.toLowerCase())) { alert(`There's already a deduction called ${name}.`); return $('ddName').focus(); }
+      D.items.push({ name, cat: $('ddCat').value, history: v > 0 ? [{ from: '0000-01-01', amount: v }] : [] });
+      S.dedDraft = false; save();
+    };
+    const cancel = () => { S.dedDraft = false; render(); };
+    $('ddOk').onclick = commit; $('ddCancel').onclick = cancel;
+    $('dedDraft').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') cancel(); };
+  }
+  $('dedMatch').onchange = () => { D.match = $('dedMatch').value.trim(); if (!S.demo) changed(); render(); };
+}
+
 function render() {
   const rg = range(), all = S.mode === 'all';
   $('anchor').value = S.anchor;
@@ -653,7 +760,7 @@ function render() {
   document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mode));
   $('rangeLabel').textContent = rangeLabel(rg);
 
-  const txns = S.vault.txns.filter(t => t.date >= rg[0] && t.date <= rg[1]);
+  const txns = allTxns().filter(t => t.date >= rg[0] && t.date <= rg[1]);
   const income = txns.filter(t => kindOf(t.cat) === 'income').reduce((a, t) => a + t.amount, 0);
   $('tSpent').textContent = money.format(txns.reduce((a, t) => a + spendOf(t), 0));
   $('tIncome').textContent = money.format(income);
@@ -665,6 +772,7 @@ function render() {
   renderBreakdown(txns);
   renderBuckets(txns, rg, income);
   renderTable(txns);
+  renderDeductions();
 }
 
 function renderBreakdown(txns) {
@@ -683,31 +791,25 @@ function renderBreakdown(txns) {
   }));
 }
 
-// What the bars are measured against. Default: last month's income, prorated to the days being viewed
-// (days so far for the current month/week). The toggle switches to income actually received this period.
+// What the bars are measured against. Default: last month's full income, so the bars show how much
+// of it is used and what's left. The toggle switches to income actually received this period.
 function incomeBase(rg, actual) {
-  const prorate = (S.vault.incomeBase || 'prorated') === 'prorated' && S.mode !== 'all';
+  const useLast = S.incomeBase !== 'actual' && S.mode !== 'all';
   $('incomeSeg').classList.toggle('hidden', S.mode === 'all');
-  document.querySelectorAll('#incomeSeg button').forEach(b => b.classList.toggle('on', (b.dataset.base === 'prorated') === prorate));
+  document.querySelectorAll('#incomeSeg button').forEach(b => b.classList.toggle('on', (b.dataset.base === 'last') === useLast));
   const actualNote = `Compared to income received this period: ${money0.format(actual)}.`;
-  if (!prorate) return { base: actual, note: S.mode === 'all' ? `Compared to all income received: ${money0.format(actual)}.` : actualNote };
+  if (!useLast) return { base: actual, note: S.mode === 'all' ? `Compared to all income received: ${money0.format(actual)}.` : actualNote };
 
   const ref = S.mode === 'week' ? S.anchor : rg[0];              // the month this period belongs to
   const prev = addMonths(monthStart(ref), -1), prevName = MONTHS[+prev.slice(5, 7) - 1];
-  const monthly = S.vault.txns.filter(t => t.date >= prev && t.date <= monthEnd(prev) && kindOf(t.cat) === 'income').reduce((a, t) => a + t.amount, 0);
+  const monthly = allTxns().filter(t => t.date >= prev && t.date <= monthEnd(prev) && kindOf(t.cat) === 'income').reduce((a, t) => a + t.amount, 0);
   if (monthly <= 0) return { base: actual, note: `No income found in ${prevName}, so using income received this period: ${money0.format(actual)}.` };
-
-  const today = iso(new Date()), end = rg[1] < today ? rg[1] : today; // don't count days that haven't happened
-  const days = rg[0] > today ? 0 : Math.round((toDate(end) - toDate(rg[0])) / 864e5) + 1;
-  const dim = toDate(monthEnd(ref)).getDate();
-  const base = (monthly * days) / dim;
-  return {
-    base,
-    note: days === dim
-      ? `Compared to ${prevName}’s income: ${money0.format(monthly)}.`
-      : `Compared to ${money0.format(base)}: ${prevName}’s income (${money0.format(monthly)}) prorated to ${days} of ${dim} days.`,
-  };
+  return { base: monthly, note: `Compared to ${prevName}’s income: ${money0.format(monthly)}.` };
 }
+
+// Target split of income (dashed line on each bar). Default 50/30/20.
+const DEFAULT_TARGETS = { need: 50, want: 30, savings: 20 };
+const targets = () => ({ ...DEFAULT_TARGETS, ...(S.vault.targets || {}) });
 
 function renderBuckets(txns, rg, actual) {
   // Each bucket as a share of the income base. Money moved back out of savings counts as negative savings.
@@ -717,30 +819,42 @@ function renderBuckets(txns, rg, actual) {
   for (const t of txns) { const k = kindOf(t.cat); if (k in sums) sums[k] -= t.amount; }
   sums.left = income - sums.need - sums.want - sums.savings - sums.uncat; // negative = spent/saved more than earned
   const pct = v => (income > 0 ? (v / income) * 100 : 0);
+  const T = targets();
   const scale = Math.max(100, ...BUCKETS.map(([k]) => pct(sums[k]))); // bars stretch past 100% if a bucket exceeds income
   const fmtPct = v => `${Math.abs(v) >= 10 || v === 0 ? Math.round(v) : v.toFixed(1)}%`;
   let html = BUCKETS.map(([k, label]) => {
     const p = pct(sums[k]), w = Math.max(0, (p / scale) * 100);
     const open = k === 'left' ? '<div class="bk">' // not a set of transactions, so not a filter
-      : `<button class="bk bk-btn ${S.kind === k ? 'on' : ''}" data-kind="${k}" title="Show only ${label} transactions">`;
+      : `<button class="bk bk-btn ${k in T && income > 0 ? 'has-tgt' : ''} ${S.kind === k ? 'on' : ''}" data-kind="${k}" title="Show only ${label} transactions">`;
     return `${open}<span>${label}</span>
       <span class="track">
+        ${k in T && income > 0 ? `<div class="zone" style="width:${(T[k] / scale) * 100}%;background:var(--${k === 'savings' ? 'save' : k})"></div>` : ''}
         ${w > 0 ? `<div class="fill" style="width:${w}%;min-width:3px;background:var(--${k === 'savings' ? 'save' : k})"></div>` : ''}
+        ${k in T && income > 0 ? `<span class="tgt" style="left:${(T[k] / scale) * 100}%" title="Your ${T[k]}% ${k === 'savings' ? 'goal' : 'limit'}: ${money0.format(income * T[k] / 100)}"><b>${k === 'savings' ? 'goal' : 'limit'} ${T[k]}%</b></span>` : ''}
         ${scale > 100 ? `<span class="mark" style="left:${(100 / scale) * 100}%" title="100% of income"></span>` : ''}
       </span>
-      <span class="val">${income > 0 ? fmtPct(p) : '—'}<small>${money0.format(sums[k])}</small></span>${k === 'left' ? '</div>' : '</button>'}`;
+      <span class="val">${income > 0 ? fmtPct(p) : '—'}<small>${money0.format(sums[k])}${k in T && income > 0 ? ` of ${money0.format(income * T[k] / 100)}` : ''}</small>${k in T && income > 0 ? (() => { const d = income * T[k] / 100 - sums[k]; return k === 'savings' ? (d > 0 ? `<small class="ok">${money0.format(d)} to go</small>` : `<small class="ok">goal met ✓</small>`) : d >= 0 ? `<small class="ok">${money0.format(d)} left</small>` : `<small class="over">${money0.format(-d)} over</small>`; })() : ''}</span>${k === 'left' ? '</div>' : '</button>'}`;
   }).join('');
   html += `<p class="bk-note">${income > 0 ? esc(note) : 'No income to compare against, so percentages can’t be calculated.'}</p>`;
+  const sum = T.need + T.want + T.savings;
+  html += `<div class="tgt-edit">Targets:
+    ${['need', 'want', 'savings'].map(k => `<label>${KIND_LABELS[k]} <input type="number" min="0" max="100" step="1" data-tgt="${k}" value="${T[k]}">%</label>`).join('')}
+    <span${sum !== 100 ? ' style="color:var(--neg, #c33)"' : ''}>= ${sum}%</span></div>`;
   $('buckets').innerHTML = html;
+  $('buckets').querySelectorAll('[data-tgt]').forEach(inp => (inp.onchange = () => {
+    const v = Math.max(0, Math.min(100, Math.round(+inp.value || 0)));
+    S.vault.targets = { ...targets(), [inp.dataset.tgt]: v };
+    if (!S.demo) changed();
+    render();
+  }));
   $('buckets').querySelectorAll('[data-kind]').forEach(b => (b.onclick = () => {
     S.kind = S.kind === b.dataset.kind ? null : b.dataset.kind; S.cat = null; render();
   }));
 }
 $('incomeSeg').onclick = e => {
   const b = e.target.closest('[data-base]');
-  if (!b || S.vault.incomeBase === b.dataset.base) return;
-  S.vault.incomeBase = b.dataset.base; // saved in the vault so it sticks
-  if (!S.demo) changed();
+  if (!b || (S.incomeBase || 'last') === b.dataset.base) return;
+  S.incomeBase = b.dataset.base; // not saved: every visit starts on last month's income
   render();
 };
 const KIND_LABELS = { need: 'Needs', want: 'Wants', savings: 'Savings', uncat: 'Uncategorized' };
@@ -770,7 +884,7 @@ function renderTable(txns) {
       <td class="num" style="text-align:left">${t.date}</td>
       <td class="desc" title="${esc(t.desc)}">${esc(t.desc)}</td>
       <td class="num">${money.format(t.amount)}</td>
-      <td>${select(t)}</td></tr>`).join('')
+      <td>${t.auto ? `${esc(t.cat)} <span class="tag-auto" title="Added from Paycheck deductions">auto · ${esc(t.auto)}</span>` : select(t)}</td></tr>`).join('')
     || '<tr><td colspan="4" class="muted">No transactions here. Import a CSV or pick another period.</td></tr>';
   if (rows.length > LIMIT) $('txBody').insertAdjacentHTML('beforeend', `<tr><td colspan="4" class="muted">Showing the first ${LIMIT} of ${rows.length}. Pick a shorter period to see the rest.</td></tr>`);
   $('txBody').querySelectorAll('select').forEach(sel => (sel.onchange = () => setCategory(sel.dataset.id, sel.value)));
@@ -1122,6 +1236,8 @@ if (new URLSearchParams(location.search).has('demo')) {
     }
     if (d.endsWith('-01') || d.endsWith('-15')) S.vault.txns.push({ id: `pay-${i}`, date: d, desc: 'ACME CORP PAYROLL', amount: 2400, cat: 'Income', manual: false });
   }
+  S.vault.deductions = { match: 'PAYROLL', items: [{ name: '401k', cat: 'Savings', history: [{ from: '0000-01-01', amount: 300 }] },
+    { name: 'Medical insurance', cat: 'Bills & Utilities', history: [{ from: '0000-01-01', amount: 85 }] }] };
   startApp();
 } else initLock();
 </script>
