@@ -200,7 +200,10 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   <div class="card" style="margin-top:16px">
     <div class="row spread">
       <h2 id="txTitle" style="margin:0">Transactions</h2>
-      <button id="clearCat" class="hidden">Show all transactions</button>
+      <div class="row" style="gap:8px">
+        <input type="search" id="txSearch" placeholder="Search transactions…" aria-label="Search transactions" style="width:220px;font:inherit;padding:4px 8px">
+        <button id="clearCat" class="hidden">Show all transactions</button>
+      </div>
     </div>
     <div id="ruleBanner" class="banner hidden"></div>
     <div class="tx-wrap" style="margin-top:8px">
@@ -867,6 +870,11 @@ function renderTable(txns) {
     amount: (a, b) => a.amount - b.amount,
   }[key];
   const rows = (S.cat ? txns.filter(t => catOf(t) === S.cat) : S.kind ? txns.filter(t => kindOf(t.cat) === S.kind) : txns).slice()
+    .filter(t => { // search box: matches description, category, date or amount
+      const q = (S.q || '').trim().toLowerCase();
+      if (!q) return true;
+      return `${t.desc} ${t.cat || UNCAT} ${t.date} ${t.amount.toFixed(2)} ${Math.abs(t.amount).toFixed(2)}`.toLowerCase().includes(q);
+    })
     .sort((a, b) => sign * cmp(a, b) || b.date.localeCompare(a.date)); // ties: newest first
   $('txHead').querySelectorAll('th.sortable').forEach(th => {
     const on = th.dataset.sort === key;
@@ -885,10 +893,12 @@ function renderTable(txns) {
       <td class="desc" title="${esc(t.desc)}">${esc(t.desc)}</td>
       <td class="num">${money.format(t.amount)}</td>
       <td>${t.auto ? `${esc(t.cat)} <span class="tag-auto" title="Added from Paycheck deductions">auto · ${esc(t.auto)}</span>` : select(t)}</td></tr>`).join('')
-    || '<tr><td colspan="4" class="muted">No transactions here. Import a CSV or pick another period.</td></tr>';
+    || `<tr><td colspan="4" class="muted">${S.q ? `Nothing matches “${esc(S.q)}” in this period.` : 'No transactions here. Import a CSV or pick another period.'}</td></tr>`;
   if (rows.length > LIMIT) $('txBody').insertAdjacentHTML('beforeend', `<tr><td colspan="4" class="muted">Showing the first ${LIMIT} of ${rows.length}. Pick a shorter period to see the rest.</td></tr>`);
   $('txBody').querySelectorAll('select').forEach(sel => (sel.onchange = () => setCategory(sel.dataset.id, sel.value)));
 }
+
+$('txSearch').oninput = () => { S.q = $('txSearch').value; render(); };
 
 // Click a header to sort; click again to flip. First click: newest dates, A→Z, biggest spending (most negative) first.
 const SORT_FIRST_DIR = { date: 'desc', desc: 'asc', amount: 'asc' };
